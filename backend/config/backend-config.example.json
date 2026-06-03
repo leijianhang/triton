@@ -1,0 +1,56 @@
+{
+  "dev": {
+    "port": 3001,
+    "hunterDb": {
+      "host": "your_mysql_host",
+      "port": 3306,
+      "database": "hunter_db",
+      "user": "hunter",
+      "password": "your_password_here",
+      "connectionLimit": 5,
+      "connectTimeoutMs": 3000,
+      "queryTimeoutMs": 3500
+    },
+    "apolloTaos": {
+      "restUrl": "http://your_taos_host:6041/rest/sql",
+      "database": "apollo_db",
+      "user": "apollo",
+      "password": "your_password_here",
+      "timeoutMs": 6000
+    },
+    "hunterTaos": {
+      "restUrl": "http://your_taos_host:6041/rest/sql",
+      "database": "hunter_db",
+      "user": "hunter",
+      "password": "your_password_here",
+      "timeoutMs": 6000
+    }
+  },
+  "prod": {
+    "port": 3001,
+    "hunterDb": {
+      "host": "your_mysql_host",
+      "port": 3306,
+      "database": "hunter_db",
+      "user": "hunter",
+      "password": "your_password_here",
+      "connectionLimit": 5,
+      "connectTimeoutMs": 3000,
+      "queryTimeoutMs": 3500
+    },
+    "apolloTaos": {
+      "restUrl": "http://your_taos_host:6041/rest/sql",
+      "database": "apollo_db",
+      "user": "apollo",
+      "password": "your_password_here",
+      "timeoutMs": 6000
+    },
+    "hunterTaos": {
+      "restUrl": "http://your_taos_host:6041/rest/sql",
+      "database": "hunter_db",
+      "user": "hunter",
+      "password": "your_password_here",
+      "timeoutMs": 6000
+    }
+  }
+}
