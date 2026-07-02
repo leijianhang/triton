@@ -17,3 +17,9 @@ test-results/
 output/
 backend/config/database-passwords.json
 backend/config/backend-config.json
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
