@@ -1,19 +1,17 @@
 import express from 'express';
 import 'dotenv/config';
-import authRoutes from './routes/auth.js';
+import marketRoutes from './routes/market.js';
 import stockRoutes from './routes/stock.js';
-import futuresRoutes from './routes/futures.js';
 import patternRoutes from './routes/pattern.js';
 import { getBackendConfig } from './config/backendConfig.js';
 
 const app = express();
 const PORT = getBackendConfig().port || 3001;
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
-app.use('/api/auth', authRoutes);
+app.use('/api/market', marketRoutes);
 app.use('/api/stock', stockRoutes);
-app.use('/api/futures', futuresRoutes);
 app.use('/api/pattern', patternRoutes);
 
 app.get('/health', (req, res) => {

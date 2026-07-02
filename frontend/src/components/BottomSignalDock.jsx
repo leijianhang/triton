@@ -22,7 +22,7 @@ import {
   SettingOutlined
 } from '@ant-design/icons';
 import { getScannerRows, getTimingRows } from '../data/marketCatalog';
-import { getFallbackMarketSymbols, loadLiveMarketSymbols } from '../data/liveMarketData';
+import { getFallbackMarketSymbols } from '../data/liveMarketData';
 import {
   STRATEGY_STORAGE_KEY,
   addStrategyNestedRule,
@@ -104,7 +104,7 @@ const alertRows = [
 
 const happeningRows = [
   { title: 'Large-cap liquor names leading intraday strength', time: '09:45', source: 'Scanner', tone: 'good' },
-  { title: 'Copper futures volatility expanding', time: '10:12', source: 'Volatility', tone: 'good' },
+  { title: 'US and HK tech volatility expanding', time: '10:12', source: 'Volatility', tone: 'good' },
   { title: 'Banking stocks lagging MA20 market breadth', time: '10:33', source: 'Market Breadth', tone: 'warn' }
 ];
 
@@ -856,17 +856,10 @@ const ScannerPanel = () => {
     setScannerMenuOpen(false);
   };
 
-  const handleRunScanner = async () => {
+  const handleRunScanner = () => {
     if (!activeScanner || activeConditions.length === 0) return;
-    let rowsForScan = marketSymbols;
-    try {
-      rowsForScan = await loadLiveMarketSymbols();
-      setMarketSymbols(rowsForScan);
-    } catch {
-      rowsForScan = marketSymbols;
-    }
     const rows = executeScannerScan({
-      rows: getScannerRows(rowsForScan),
+      rows: marketSymbols,
       watchlistGroups,
       scanUniverse,
       conditions: activeConditions,

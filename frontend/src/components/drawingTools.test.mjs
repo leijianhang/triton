@@ -13,7 +13,7 @@ const symbol = { symbol: '600519', symbolType: 'stock' };
 const key = getDrawingSymbolKey(symbol);
 
 assert.equal(key, 'stock:600519');
-assert.equal(getDrawingSymbolKey({ symbol: 'AU2406', type: 'futures' }), 'futures:AU2406');
+assert.equal(getDrawingSymbolKey({ symbol: 'AAPL', type: 'us' }), 'us:AAPL');
 assert.equal(getDrawingSymbolKey({ symbol: '' }), null);
 
 const drawing = createDrawing({

@@ -39,7 +39,7 @@ import './TerminalTopBar.css';
 
 const TerminalTopBar = ({ currentSymbol, currentName, currentType, period }) => {
   const displaySymbol = currentSymbol ? `${currentSymbol} ${currentName || ''}`.trim() : '未选择品种';
-  const typeLabel = currentType === 'futures' ? '期货' : 'A股';
+  const typeLabel = currentType === 'us' ? 'US' : currentType === 'hk' ? 'HK' : 'A股';
 
   return (
     <header className="terminal-topbar">
@@ -613,7 +613,7 @@ import ToolRail from './components/ToolRail';
 import RightInsightRail from './components/RightInsightRail';
 import BottomSignalDock from './components/BottomSignalDock';
 import { useChartStore } from './store/chartStore';
-import { stockAPI, futuresAPI } from './services/api';
+import { marketAPI } from './services/api';
 import './App.css';
 
 function App() {
@@ -637,12 +637,7 @@ function App() {
     const loadKlineData = async () => {
       setLoading(true);
       try {
-        const api = currentType === 'stock' ? stockAPI : futuresAPI;
-        const response = await api.getKline(
-          currentSymbol,
-          period,
-          currentType === 'stock' ? adjust : undefined
-        );
+        const response = await marketAPI.getKline(currentType, currentSymbol, period, { adjust });
 
         if (response.success) {
           setKlineData(response.data);
@@ -688,7 +683,7 @@ function App() {
               <KlineChart data={klineData} indicators={indicators} />
             ) : (
               <div className="empty-container">
-                <p>请搜索并选择股票或期货品种</p>
+                <p>Please search and select an A-share, US stock, or Hong Kong stock symbol.</p>
               </div>
             )}
           </section>

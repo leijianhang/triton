@@ -1,7 +1,7 @@
 {
   "name": "trading-platform-frontend",
   "version": "1.0.0",
-  "description": "A股和期货技术分析平台前端",
+  "description": "A-share, US stock, and Hong Kong stock analysis frontend",
   "private": true,
   "type": "module",
   "scripts": {

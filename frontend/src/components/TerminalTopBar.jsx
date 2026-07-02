@@ -1,14 +1,7 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Dropdown } from 'antd';
 import {
-  AppstoreOutlined,
-  FunctionOutlined,
-  HeatMapOutlined,
-  LineChartOutlined,
   LogoutOutlined,
-  MoreOutlined,
-  NodeIndexOutlined,
-  RadarChartOutlined,
   SettingOutlined
 } from '@ant-design/icons';
 import SearchPanel from './SearchPanel';
@@ -16,25 +9,48 @@ import { getWorkspaceLayout, workspaceLayoutOptions } from './workspaceLayoutOpt
 import './TerminalTopBar.css';
 
 const featureButtons = [
-  { key: 'Auto Fib', label: '自动斐波那契', icon: <NodeIndexOutlined /> },
-  { key: 'Trends', label: '趋势', icon: <LineChartOutlined /> },
-  { key: 'Indicators', label: '指标', icon: <FunctionOutlined /> },
-  { key: 'Patterns', label: '形态', icon: <RadarChartOutlined /> },
-  { key: 'Heatmap', label: '热力图', icon: <HeatMapOutlined /> }
+  { key: 'Auto Fib', label: '自动斐波那契' },
+  { key: 'Trends', label: '趋势' },
+  { key: 'Indicators', label: '指标' },
+  { key: 'Patterns', label: 'Candle Patterns' },
+  { key: 'Chart Patterns', label: 'Chart Patterns' },
+  { key: 'Heatmap', label: '热力图' },
+  { key: 'Replay', label: '回放' }
 ];
+
+const TopbarMoreIcon = () => (
+  <span className="topbar-more-vertical" aria-hidden="true">
+    <i />
+    <i />
+    <i />
+  </span>
+);
 
 const TerminalTopBar = ({
   currentSymbol,
   currentName,
   workspaceLayout,
   activeFeature,
+  autoFibActive = false,
+  heatmapActive = false,
+  replayActive = false,
+  trendsActive = false,
   indicatorsActive,
   patternsActive,
+  chartPatternsActive,
   onLayoutChange,
+  onAutoFibToggle,
+  onChartPatternMenuOpen,
+  onChartPatternToggle,
+  onHeatmapMenuOpen,
+  onHeatmapToggle,
+  onReplayToggle,
   onIndicatorMenuOpen,
   onIndicatorToggle,
   onPatternMenuOpen,
   onPatternToggle,
+  onTrendMenuOpen,
+  onTrendToggle,
   onFeatureSelect,
   themePreference = 'night',
   resolvedTheme = 'night',
@@ -43,20 +59,21 @@ const TerminalTopBar = ({
   currentUser
 }) => {
   const [activeSettingsMenu, setActiveSettingsMenu] = useState(null);
+  const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const displaySymbol = currentSymbol ? `${currentSymbol} ${currentName || ''}`.trim() : '搜索标的';
   const activeLayout = getWorkspaceLayout(workspaceLayout);
+
   const layoutOverlay = (
     <div className="workspace-layout-menu">
-      <div className="workspace-layout-title">
-        <strong>工作区布局</strong>
-        <span>{activeLayout.label}</span>
-      </div>
       <div className="workspace-layout-grid">
         {workspaceLayoutOptions.map(item => (
           <button
             className={activeLayout.value === item.value ? 'active' : ''}
             key={item.value}
-            onClick={() => onLayoutChange?.(item.value)}
+            onClick={() => {
+              onLayoutChange?.(item.value);
+              setLayoutMenuOpen(false);
+            }}
             type="button"
           >
             <span className={`layout-icon ${item.className}`}>
@@ -66,17 +83,15 @@ const TerminalTopBar = ({
           </button>
         ))}
       </div>
-      <div className="workspace-layout-actions">
-        <button type="button">保存工作区</button>
-        <button type="button">切换工作区</button>
-      </div>
     </div>
   );
+
   const themeOptions = [
     { value: 'night', label: '夜间', detail: '深色交易工作区' },
     { value: 'day', label: '日间', detail: '浅色交易工作区' },
     { value: 'auto', label: '自动', detail: '07:00-18:59 使用日间模式' }
   ];
+
   const settingsOverlay = (
     <div className="topbar-settings-menu">
       <div className="topbar-settings-title">
@@ -140,8 +155,8 @@ const TerminalTopBar = ({
   return (
     <header className="terminal-topbar">
       <div className="topbar-brand">
-        <span className="brand-mark">ET</span>
-        <span className="brand-name">EagleTrace</span>
+        <span className="brand-mark">T</span>
+        <span className="brand-name">Triton</span>
       </div>
 
       <div className="topbar-search">
@@ -150,6 +165,9 @@ const TerminalTopBar = ({
 
       <nav className="topbar-feature-strip" aria-label="分析功能">
         <Dropdown
+          align={{ offset: [0, -26] }}
+          onOpenChange={setLayoutMenuOpen}
+          open={layoutMenuOpen}
           overlayClassName="workspace-layout-dropdown"
           placement="bottomLeft"
           popupRender={() => layoutOverlay}
@@ -157,30 +175,76 @@ const TerminalTopBar = ({
         >
           <button
             className="layout-button"
-            title="布局"
+            title="Workspace Layout"
             type="button"
           >
-            <AppstoreOutlined />
-            <span>{activeLayout.label}</span>
+            <span className={`layout-icon topbar-layout-icon ${activeLayout.className}`}>
+              {Array.from({ length: activeLayout.panes }).map((_, index) => <i key={index} />)}
+            </span>
+            <span className="layout-dropdown-caret" aria-hidden="true" />
           </button>
         </Dropdown>
         {featureButtons.map(item => (
-          item.key === 'Indicators' || item.key === 'Patterns' ? (
+          item.key === 'Auto Fib' ? (
+            <button
+              key={item.key}
+              className={autoFibActive ? 'active' : ''}
+              title={item.label}
+              onClick={() => onAutoFibToggle?.()}
+              type="button"
+            >
+              <span>{item.label}</span>
+            </button>
+          ) : item.key === 'Trends' ? (
+            <span className="split-topbar-control" key={item.key}>
+              <button
+                className={trendsActive ? 'active split-main-button' : 'split-main-button'}
+                title={item.label}
+                onClick={() => onTrendToggle?.()}
+                type="button"
+              >
+                <span>{item.label}</span>
+              </button>
+              <button
+                className="split-more-topbar-button"
+                title="配置自动趋势线"
+                onClick={() => onTrendMenuOpen?.()}
+                type="button"
+              >
+                <TopbarMoreIcon />
+              </button>
+            </span>
+          ) : item.key === 'Replay' ? (
+            <button
+              key={item.key}
+              className={replayActive ? 'active' : ''}
+              title="Bar Replay"
+              onClick={() => onReplayToggle?.()}
+              type="button"
+            >
+              <span>{item.label}</span>
+            </button>
+          ) : item.key === 'Indicators' || item.key === 'Patterns' || item.key === 'Chart Patterns' || item.key === 'Heatmap' ? (
             <span className="split-topbar-control" key={item.key}>
               <button
                 className={
                   item.key === 'Indicators'
                     ? (indicatorsActive ? 'active split-main-button' : 'split-main-button')
-                    : (patternsActive ? 'active split-main-button' : 'split-main-button')
+                    : item.key === 'Chart Patterns'
+                      ? (chartPatternsActive ? 'active split-main-button' : 'split-main-button')
+                      : item.key === 'Heatmap'
+                        ? (heatmapActive ? 'active split-main-button' : 'split-main-button')
+                        : (patternsActive ? 'active split-main-button' : 'split-main-button')
                 }
                 title={item.label}
                 onClick={() => {
                   if (item.key === 'Indicators') onIndicatorToggle?.();
+                  else if (item.key === 'Chart Patterns') onChartPatternToggle?.();
+                  else if (item.key === 'Heatmap') onHeatmapToggle?.();
                   else onPatternToggle?.();
                 }}
                 type="button"
               >
-                {item.icon}
                 <span>{item.label}</span>
               </button>
               {item.key === 'Indicators' ? (
@@ -190,16 +254,34 @@ const TerminalTopBar = ({
                   onClick={() => onIndicatorMenuOpen?.()}
                   type="button"
                 >
-                  <MoreOutlined />
+                  <TopbarMoreIcon />
+                </button>
+              ) : item.key === 'Chart Patterns' ? (
+                <button
+                  className="split-more-topbar-button"
+                  title="选择并应用 Chart Patterns"
+                  onClick={() => onChartPatternMenuOpen?.()}
+                  type="button"
+                >
+                  <TopbarMoreIcon />
+                </button>
+              ) : item.key === 'Heatmap' ? (
+                <button
+                  className="split-more-topbar-button"
+                  title="Heatmap Settings"
+                  onClick={() => onHeatmapMenuOpen?.()}
+                  type="button"
+                >
+                  <TopbarMoreIcon />
                 </button>
               ) : (
                 <button
                   className="split-more-topbar-button"
-                  title="搜索并应用形态"
+                  title="选择并应用 Candle Patterns"
                   onClick={() => onPatternMenuOpen?.()}
                   type="button"
                 >
-                  <MoreOutlined />
+                  <TopbarMoreIcon />
                 </button>
               )}
             </span>
@@ -211,7 +293,6 @@ const TerminalTopBar = ({
               onClick={() => onFeatureSelect?.(item.key)}
               type="button"
             >
-              {item.icon}
               <span>{item.label}</span>
             </button>
           )

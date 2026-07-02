@@ -6,6 +6,13 @@ import {
   formatMeasureLabel,
   getPointerPoint
 } from './drawingGeometry';
+import {
+  formatAutoFibonacciLevel,
+  getAutoFibonacciModel
+} from './autoFibonacci';
+import { getAutoTrendlines } from './autoTrendlines';
+import { getChartPatternOverlayItems } from './chartPatternOverlay';
+import { getHeatmapOverlayBounds, getHeatmapOverlayItems } from './heatmapOverlay';
 import { getChartTime } from './chartDataTransform';
 import { getDrawingOverlayClassName } from './drawingOverlayState';
 import './DrawingOverlay.css';
@@ -74,10 +81,10 @@ const getTrendRayLine = (start, end, width) => {
   }
 
   const slope = (end.y - start.y) / (end.x - start.x);
-  const futureX = width;
+  const projectedX = width;
   return {
     start,
-    end: { x: futureX, y: start.y + (futureX - start.x) * slope }
+    end: { x: projectedX, y: start.y + (projectedX - start.x) * slope }
   };
 };
 
@@ -124,10 +131,10 @@ const getRayThroughPoints = (start, through, width) => {
     return { start, end: through };
   }
   const slope = (through.y - start.y) / (through.x - start.x);
-  const futureX = through.x >= start.x ? width : 0;
+  const projectedX = through.x >= start.x ? width : 0;
   return {
     start,
-    end: { x: futureX, y: start.y + (futureX - start.x) * slope }
+    end: { x: projectedX, y: start.y + (projectedX - start.x) * slope }
   };
 };
 
@@ -137,10 +144,10 @@ const getParallelRayThroughPoint = (baseStart, baseEnd, throughPoint, width) => 
     return { start: throughPoint, end: { x: throughPoint.x + (baseEnd.x - baseStart.x), y: throughPoint.y + (baseEnd.y - baseStart.y) } };
   }
   const slope = (baseEnd.y - baseStart.y) / (baseEnd.x - baseStart.x);
-  const futureX = baseEnd.x >= baseStart.x ? width : 0;
+  const projectedX = baseEnd.x >= baseStart.x ? width : 0;
   return {
     start: throughPoint,
-    end: { x: futureX, y: throughPoint.y + (futureX - throughPoint.x) * slope }
+    end: { x: projectedX, y: throughPoint.y + (projectedX - throughPoint.x) * slope }
   };
 };
 
@@ -252,6 +259,399 @@ const DrawingHandle = ({ point, onPointerDown }) => (
     onPointerDown={onPointerDown}
   />
 );
+
+const formatAutoFibPrice = price => {
+  const numeric = Number(price);
+  if (!Number.isFinite(numeric)) return '';
+  if (Math.abs(numeric) >= 1000) return numeric.toFixed(0);
+  if (Math.abs(numeric) >= 100) return numeric.toFixed(2);
+  return numeric.toFixed(3);
+};
+
+const AutoFibonacciShape = ({ chart, model, overlayHeight, overlayWidth, series }) => {
+  if (!model || !chart || !series) return null;
+
+  const startPoint = anchorToPoint({ anchor: model.start, chart, series });
+  const endPoint = anchorToPoint({ anchor: model.end, chart, series });
+  if (!startPoint || !endPoint) return null;
+
+  const x1 = Math.min(startPoint.x, endPoint.x);
+  const x2 = Math.max(Math.max(startPoint.x, endPoint.x), overlayWidth - 112);
+  const labelX = Math.max(8, Math.min(x1 + 6, overlayWidth - 112));
+  const analysisX = chart.timeScale().timeToCoordinate(model.analysis?.time);
+  const levelPoints = model.levels
+    .map(item => ({
+      ...item,
+      y: series.priceToCoordinate(item.price)
+    }))
+    .filter(item => Number.isFinite(item.y));
+  const fillTop = levelPoints.find(item => item.level === 0.382);
+  const fillBottom = levelPoints.find(item => item.level === 0.618);
+
+  return (
+    <g className={`auto-fib auto-fib-${model.direction}`}>
+      {Number.isFinite(analysisX) && Number.isFinite(overlayHeight) && (
+        <g className="auto-fib-truth-line">
+          <title>Truth in Analysis</title>
+          <line x1={analysisX} y1={0} x2={analysisX} y2={overlayHeight} />
+          <text x={Math.min(analysisX + 6, Math.max(8, overlayWidth - 92))} y={Math.max(14, overlayHeight - 8)}>
+            Truth in Analysis
+          </text>
+        </g>
+      )}
+      {fillTop && fillBottom && (
+        <rect
+          className="auto-fib-value-zone"
+          x={x1}
+          y={Math.min(fillTop.y, fillBottom.y)}
+          width={Math.max(1, x2 - x1)}
+          height={Math.abs(fillBottom.y - fillTop.y)}
+        />
+      )}
+      {levelPoints.map(item => (
+        <g className="auto-fib-level" key={item.level}>
+          <line
+            style={{
+              stroke: item.color,
+              strokeWidth: item.thickness || 1
+            }}
+            x1={x1}
+            y1={item.y}
+            x2={x2}
+            y2={item.y}
+          />
+          <text
+            style={{ fill: item.color }}
+            x={labelX}
+            y={item.y - 4}
+          >
+            {formatAutoFibonacciLevel(item.level)} [{formatAutoFibPrice(item.price)}]
+          </text>
+        </g>
+      ))}
+      <line
+        className="auto-fib-anchor-line"
+        x1={startPoint.x}
+        y1={startPoint.y}
+        x2={endPoint.x}
+        y2={endPoint.y}
+      />
+      <circle className="auto-fib-anchor" cx={startPoint.x} cy={startPoint.y} r="3.5" />
+      <circle className="auto-fib-anchor" cx={endPoint.x} cy={endPoint.y} r="3.5" />
+    </g>
+  );
+};
+
+const chartPatternColor = {
+  bullish: '#4ee093',
+  bearish: '#ff6b7a',
+  neutral: '#ffb84d'
+};
+
+const chartPatternLineClass = kind => (
+  kind === 'target'
+    ? 'chart-pattern-line chart-pattern-target'
+    : kind === 'neckline'
+      ? 'chart-pattern-line chart-pattern-neckline'
+      : 'chart-pattern-line'
+);
+
+const ChartPatternShape = ({ chart, pattern, series }) => {
+  if (!pattern?.lines?.length || !chart || !series) return null;
+
+  const color = chartPatternColor[pattern.signal] || chartPatternColor.neutral;
+  const lineGroups = pattern.lines.map((line, lineIndex) => {
+    const linePoints = Array.isArray(line?.points) ? line.points : [];
+    const points = linePoints
+      .map(anchor => anchorToPoint({ anchor, chart, series }))
+      .filter(Boolean);
+    if (points.length < 2) return null;
+    const pointList = points.map(point => `${point.x},${point.y}`).join(' ');
+    return (
+      <polyline
+        className={chartPatternLineClass(line.kind)}
+        key={`${pattern.type}-${line.kind}-${lineIndex}`}
+        points={pointList}
+        style={{ stroke: color }}
+      />
+    );
+  }).filter(Boolean);
+  if (!lineGroups.length) return null;
+
+  const labelLine = pattern.lines.find(line => line.kind === 'outline') || pattern.lines[0];
+  const labelAnchor = labelLine?.points?.[labelLine.points.length - 1];
+  const labelPoint = labelAnchor ? anchorToPoint({ anchor: labelAnchor, chart, series }) : null;
+
+  return (
+    <g className={`chart-pattern-overlay chart-pattern-${pattern.signal || 'neutral'}`}>
+      {lineGroups}
+      {labelPoint && (
+          <g className="chart-pattern-label" transform={`translate(${labelPoint.x + 8}, ${labelPoint.y - 18})`}>
+          <rect width={Math.max(74, String(pattern.label || pattern.name || pattern.type || '').length * 6.5 + 18)} height="22" rx="3" />
+          <text x="8" y="15">{pattern.label || pattern.name || pattern.type || 'Chart Pattern'}</text>
+        </g>
+      )}
+    </g>
+  );
+};
+
+const autoTrendColor = {
+  resistance: '#4ee093',
+  stale: '#ff6670',
+  support: '#4ea1ff'
+};
+
+const getAutoTrendAnalysisKey = ({ settings, symbol, symbolType, period }) => {
+  if (!settings?.enabled) return '';
+  return [
+    symbolType || 'stock',
+    symbol || '',
+    period || '',
+    settings.analysisType || 'standard',
+    settings.drawingInput || 'wick',
+    settings.islands || 'respect',
+    settings.quality || 'relevant',
+    settings.algorithmVersion || 'legacy',
+    settings.appliedAt || 'legacy'
+  ].join('|');
+};
+
+const AutoTrendlineShape = ({ chart, line, plotWidth, series }) => {
+  if (!chart || !line || !series) return null;
+
+  const startX = chart.timeScale().timeToCoordinate(line.start.time);
+  const endX = chart.timeScale().timeToCoordinate(line.end.time);
+  const startY = series.priceToCoordinate(line.start.price);
+  const endY = series.priceToCoordinate(line.end.price);
+  if (![startX, endX, startY, endY].every(Number.isFinite) || Math.abs(endX - startX) < 1) return null;
+
+  const slope = (endY - startY) / (endX - startX);
+  const projectedX = Math.max(0, plotWidth - 1);
+  const projectedY = startY + slope * (projectedX - startX);
+  const color = line.color || (line.status === 'stale' ? autoTrendColor.stale : autoTrendColor[line.side]);
+
+  return (
+    <g className={`auto-trendline auto-trendline-${line.side} auto-trendline-${line.status}`}>
+      <line
+        className="auto-trendline-line"
+        style={{ stroke: color }}
+        x1={startX}
+        y1={startY}
+        x2={projectedX}
+        y2={projectedY}
+      />
+    </g>
+  );
+};
+
+const HeatmapOverlayShape = ({ chart, data, overlayWidth, series, snapshotKey, type }) => {
+  const clipId = React.useId().replace(/:/g, '');
+  const [snapshot, setSnapshot] = useState(null);
+  const tailSignature = useMemo(() => {
+    if (!Array.isArray(data) || !data.length) return 'empty';
+    const tail = data.at(-1);
+    let tailTime = 'unknown';
+    try {
+      tailTime = getChartTime(tail);
+    } catch {
+      tailTime = 'unknown';
+    }
+    return [tailTime, tail?.open, tail?.high, tail?.low, tail?.close].join(':');
+  }, [data]);
+  const effectiveSnapshotKey = `${snapshotKey || 'heatmap'}:${tailSignature}`;
+
+  useEffect(() => {
+    setSnapshot(current => {
+      if (!type || type === 'none') return null;
+      if (current?.key === effectiveSnapshotKey && current.type === type) return current;
+      if (!Array.isArray(data) || data.length < 2) return null;
+
+      return {
+        key: effectiveSnapshotKey,
+        type,
+        data,
+        bounds: getHeatmapOverlayBounds(data),
+        items: getHeatmapOverlayItems({ data, type })
+      };
+    });
+  }, [data, effectiveSnapshotKey, type]);
+
+  if (!chart || !series || !snapshot?.data?.length || !snapshot.items?.length || !type || type === 'none') return null;
+  const items = snapshot.items;
+  const snapshotData = snapshot.data;
+  if (!items.length) return null;
+
+  const barXs = snapshotData.map(row => {
+    try {
+      return chart.timeScale().timeToCoordinate(getChartTime(row));
+    } catch {
+      return null;
+    }
+  }).filter(Number.isFinite);
+  const minX = barXs.length ? Math.max(0, Math.min(...barXs) - 12) : 0;
+  const maxX = barXs.length ? Math.min(overlayWidth, Math.max(...barXs) + 12) : overlayWidth;
+  const bounds = snapshot.bounds;
+  const boundsX1 = bounds ? chart.timeScale().timeToCoordinate(bounds.startTime) : null;
+  const boundsX2 = bounds ? chart.timeScale().timeToCoordinate(bounds.endTime) : null;
+  const boundsTopY = bounds ? series.priceToCoordinate(bounds.maxPrice) : null;
+  const boundsBottomY = bounds ? series.priceToCoordinate(bounds.minPrice) : null;
+  const clipRect = [boundsX1, boundsX2, boundsTopY, boundsBottomY].every(Number.isFinite)
+    ? {
+      x: Math.min(boundsX1, boundsX2),
+      y: Math.min(boundsTopY, boundsBottomY),
+      width: Math.abs(boundsX2 - boundsX1),
+      height: Math.abs(boundsBottomY - boundsTopY)
+    }
+    : null;
+
+  return (
+    <>
+      {clipRect && (
+        <defs>
+          <clipPath id={clipId}>
+            <rect
+              height={clipRect.height}
+              width={clipRect.width}
+              x={clipRect.x}
+              y={clipRect.y}
+            />
+          </clipPath>
+        </defs>
+      )}
+      <g
+        className={`heatmap-overlay heatmap-overlay-${type}`}
+        clipPath={clipRect ? `url(#${clipId})` : undefined}
+      >
+        {items.map((item, index) => {
+        if (item.type === 'srPattern') {
+          const x1 = chart.timeScale().timeToCoordinate(item.startTime);
+          const x2 = chart.timeScale().timeToCoordinate(item.endTime);
+          const topY = series.priceToCoordinate(item.maxPrice);
+          const bottomY = series.priceToCoordinate(item.minPrice);
+          if (![x1, x2, topY, bottomY].every(Number.isFinite)) return null;
+          const left = Math.min(x1, x2);
+          const right = Math.max(x1, x2);
+          const top = Math.min(topY, bottomY);
+          const bottom = Math.max(topY, bottomY);
+          const patternId = `${clipId}-sr-pattern-${index}`;
+          const path = `M ${left} ${bottom} L ${left} ${top} L ${right} ${top} L ${right} ${bottom} Z`;
+
+          return (
+            <g className={`heatmap-pattern heatmap-pattern-${item.mode || 'depth'}`} key={`sr-pattern-${item.mode || 'depth'}-${index}`}>
+              <defs>
+                <pattern
+                  height="100%"
+                  id={patternId}
+                  patternUnits="objectBoundingBox"
+                  preserveAspectRatio="none"
+                  viewBox="0 0 1 1"
+                  width="100%"
+                >
+                  {item.bands.map((band, bandIndex) => (
+                    <rect
+                      fill="#ff0000"
+                      height={band.height}
+                      key={`${band.x}-${band.y}-${bandIndex}`}
+                      style={{
+                        opacity: item.mode === 'classic'
+                          ? 0.05 + band.weight * 0.7
+                          : 0.04 + band.weight * 0.86
+                      }}
+                      width={band.width}
+                      x={band.x}
+                      y={band.y}
+                    />
+                  ))}
+                </pattern>
+              </defs>
+              <path d={path} fill={`url(#${patternId})`} stroke="none" />
+            </g>
+          );
+        }
+
+        if (item.type === 'srCell' || item.type === 'depthCell') {
+          const x1 = chart.timeScale().timeToCoordinate(item.startTime);
+          const x2 = chart.timeScale().timeToCoordinate(item.endTime);
+          const topY = series.priceToCoordinate(item.price + item.heightPrice / 2);
+          const bottomY = series.priceToCoordinate(item.price - item.heightPrice / 2);
+          if (![x1, x2, topY, bottomY].every(Number.isFinite)) return null;
+          const x = Math.max(0, Math.min(x1, x2) - 1);
+          const y = Math.min(topY, bottomY);
+          const width = Math.max(10, Math.abs(x2 - x1) + 2);
+          const height = Math.max(4, Math.abs(bottomY - topY));
+
+          return (
+            <rect
+              className={`heatmap-sr-cell heatmap-${item.mode || 'depth'}-cell`}
+              height={height}
+              key={`sr-cell-${item.mode || 'depth'}-${item.startTime}-${item.price}-${index}`}
+              rx="1"
+              style={{
+                opacity: item.mode === 'classic'
+                  ? 0.04 + item.weight * 0.26
+                  : 0.02 + item.weight * 0.78
+              }}
+              width={width}
+              x={x}
+              y={y}
+            />
+          );
+        }
+
+        if (item.type === 'trend') {
+          const x1 = chart.timeScale().timeToCoordinate(item.startTime);
+          const x2 = chart.timeScale().timeToCoordinate(item.endTime);
+          const y1 = series.priceToCoordinate(item.startPrice);
+          const y2 = series.priceToCoordinate(item.endPrice);
+          if (![x1, x2, y1, y2].every(Number.isFinite)) return null;
+          return (
+            <g
+              className={`heatmap-trend-band heatmap-${item.tone}`}
+              key={`trend-${item.startTime}-${item.endTime}-${index}`}
+              style={{ opacity: 0.2 + item.weight * 0.28 }}
+            >
+              <line x1={x1} y1={y1} x2={x2} y2={y2} />
+              <line className="heatmap-trend-core" x1={x1} y1={y1} x2={x2} y2={y2} />
+            </g>
+          );
+        }
+
+        const centerY = series.priceToCoordinate(item.price);
+        const topY = series.priceToCoordinate(item.price + item.heightPrice / 2);
+        const bottomY = series.priceToCoordinate(item.price - item.heightPrice / 2);
+        if (![centerY, topY, bottomY].every(Number.isFinite)) return null;
+        const heatHeight = Math.min(18, Math.max(6, Math.abs(bottomY - topY)));
+        const coreHeight = Math.max(2, Math.min(5, heatHeight * 0.34));
+        const y = centerY - heatHeight / 2;
+        const itemStartX = item.startTime
+          ? chart.timeScale().timeToCoordinate(item.startTime)
+          : null;
+        const startX = Number.isFinite(itemStartX) ? Math.max(0, itemStartX) : minX;
+        const levelEndX = maxX;
+        const depthWidth = Math.max(92, Math.min(maxX - minX, 92 + item.weight * 260));
+        const x = item.type === 'depth'
+          ? Math.max(minX, maxX - depthWidth)
+          : startX;
+        const width = item.type === 'depth'
+          ? depthWidth
+          : Math.max(72, levelEndX - x);
+
+        return (
+          <g
+            className={`heatmap-band heatmap-${item.tone} heatmap-${item.side || 'level'}`}
+            key={`${item.type}-${item.price}-${index}`}
+            style={{ opacity: 0.32 + item.weight * 0.48 }}
+          >
+            <rect className="heatmap-glow" x={x} y={y} width={width} height={heatHeight} rx="1" />
+            <rect className="heatmap-core" x={x} y={centerY - coreHeight / 2} width={width} height={coreHeight} rx="1" />
+            <line x1={x} y1={centerY} x2={x + width} y2={centerY} />
+          </g>
+        );
+        })}
+      </g>
+    </>
+  );
+};
 
 const DrawingShape = ({
   chartData,
@@ -733,11 +1133,16 @@ const DrawingShape = ({
 const DrawingOverlay = ({
   activeDrawingTool,
   addDrawing,
+  autoFibonacciEnabled = false,
+  autoTrendSettings = { enabled: false, quality: 'relevant' },
   chartRef,
   data,
   deleteDrawing,
   drawingsBySymbol,
+  heatmapEnabled = false,
+  heatmapType = 'horizontal',
   paneRef,
+  patterns,
   period,
   selectedDrawingId,
   selectDrawing,
@@ -753,6 +1158,8 @@ const DrawingOverlay = ({
   const draftSecondRef = useRef(null);
   const draftPointerRef = useRef(null);
   const dragStateRef = useRef(null);
+  const autoTrendCacheRef = useRef({ key: '', lines: [] });
+  const autoTrendClipId = React.useId().replace(/:/g, '');
   const lastStyleByToolRef = useRef(readStoredDrawingStyles());
   const [draftPoint, setDraftPoint] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -854,6 +1261,11 @@ const DrawingOverlay = ({
   }, [activeDrawingTool, symbol, symbolType]);
 
   if (!symbol || !chart || !series || !data?.length) return null;
+
+  const plotWidth = Math.max(
+    0,
+    Math.min(overlaySize.width, Number(chart.timeScale().width?.()) || overlaySize.width)
+  );
 
   const getAnchorFromEvent = (event) => {
     const point = getPointerPoint(event, overlayRef.current);
@@ -1198,20 +1610,20 @@ const DrawingOverlay = ({
     ? anchorToPoint({ anchor: draftSecondRef.current, chart, series })
     : null;
   const draftTrendPoints = draftStartPoint && draftPoint && activeDrawingTool === 'trend'
-    ? getTrendRayLine(draftStartPoint, draftPoint, overlaySize.width)
+    ? getTrendRayLine(draftStartPoint, draftPoint, plotWidth)
     : null;
   const draftExtendedPoints = draftStartPoint && draftPoint && activeDrawingTool === 'extended'
-    ? getExtendedLine(draftStartPoint, draftPoint, overlaySize.width)
+    ? getExtendedLine(draftStartPoint, draftPoint, plotWidth)
     : null;
   const draftChannel = activeDrawingTool === 'channel' && draftStartPoint && draftPoint
     ? (draftSecondPoint
-      ? getChannelGeometry(draftStartPoint, draftSecondPoint, draftPoint, overlaySize.width)
-      : { base: getTrendRayLine(draftStartPoint, draftPoint, overlaySize.width), parallel: null, median: null })
+      ? getChannelGeometry(draftStartPoint, draftSecondPoint, draftPoint, plotWidth)
+      : { base: getTrendRayLine(draftStartPoint, draftPoint, plotWidth), parallel: null, median: null })
     : null;
   const draftPitchfork = activeDrawingTool === 'pitchfork' && draftStartPoint && draftPoint
     ? (draftSecondPoint
-      ? getPitchforkGeometry(draftStartPoint, draftSecondPoint, draftPoint, overlaySize.width)
-      : { median: getRayThroughPoints(draftStartPoint, draftPoint, overlaySize.width), sideA: null, sideB: null })
+      ? getPitchforkGeometry(draftStartPoint, draftSecondPoint, draftPoint, plotWidth)
+      : { median: getRayThroughPoints(draftStartPoint, draftPoint, plotWidth), sideA: null, sideB: null })
     : null;
   const draftBox = draftStartPoint && draftPoint && ['rectangle', 'ellipse'].includes(activeDrawingTool)
     ? {
@@ -1261,6 +1673,30 @@ const DrawingOverlay = ({
   const contextMenuSize = contextMenu?.mode === 'properties'
     ? { width: 220, height: 420 }
     : { width: 210, height: 222 };
+  const autoFibonacciModel = autoFibonacciEnabled
+    ? getAutoFibonacciModel(data, chart.timeScale().getVisibleLogicalRange?.())
+    : null;
+  const autoTrendAnalysisKey = getAutoTrendAnalysisKey({
+    period,
+    settings: autoTrendSettings,
+    symbol,
+    symbolType
+  });
+  if (!autoTrendAnalysisKey) {
+    autoTrendCacheRef.current = { key: '', lines: [] };
+  } else if (
+    autoTrendCacheRef.current.key !== autoTrendAnalysisKey
+    && Array.isArray(data)
+    && data.length >= 12
+  ) {
+    autoTrendCacheRef.current = {
+      key: autoTrendAnalysisKey,
+      lines: getAutoTrendlines(data, { ...autoTrendSettings, period })
+    };
+  }
+  const autoTrendlines = autoTrendAnalysisKey ? autoTrendCacheRef.current.lines : [];
+  const chartPatternOverlayItems = getChartPatternOverlayItems(patterns, data);
+  const resolvedHeatmapType = heatmapEnabled ? heatmapType : 'none';
 
   return (
     <svg
@@ -1276,40 +1712,79 @@ const DrawingOverlay = ({
         <marker id="drawing-arrow" markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
           <path d="M0,0 L8,4 L0,8 Z" fill="#4ee093" />
         </marker>
+        <clipPath id={autoTrendClipId}>
+          <rect height={overlaySize.height} width={plotWidth} x="0" y="0" />
+        </clipPath>
       </defs>
-      {drawings.map(drawing => (
-      <DrawingShape
-          chartData={data}
+      <AutoFibonacciShape
+        chart={chart}
+        model={autoFibonacciModel}
+        overlayHeight={overlaySize.height}
+        overlayWidth={overlaySize.width}
+        series={series}
+      />
+      <HeatmapOverlayShape
+        chart={chart}
+        data={data}
+        overlayWidth={overlaySize.width}
+        series={series}
+        snapshotKey={`${symbolType || 'stock'}:${symbol || ''}:${period || ''}`}
+        type={resolvedHeatmapType}
+      />
+      <g clipPath={`url(#${autoTrendClipId})`}>
+        {autoTrendlines.map(line => (
+          <AutoTrendlineShape
+            chart={chart}
+            key={line.id}
+            line={line}
+            plotWidth={plotWidth}
+            series={series}
+          />
+        ))}
+      </g>
+      {chartPatternOverlayItems.map((pattern, index) => (
+        <ChartPatternShape
           chart={chart}
-          deleteDrawing={deleteDrawing}
-          drawing={drawing}
-          key={drawing.id}
-          onAnchorDragStart={(event, item, anchorIndex) => beginDrag(event, item, 'anchor', anchorIndex)}
-          onContextMenu={(event, item) => {
-            const point = getPointerPoint(event, overlayRef.current);
-            if (!point) return;
-            selectDrawing?.(item.id);
-            setContextMenu({ drawing: item, mode: 'actions', x: point.x, y: point.y });
-          }}
-          onDoubleClick={(event, item) => {
-            const point = getPointerPoint(event, overlayRef.current);
-            if (!point) return;
-            selectDrawing?.(item.id);
-            setContextMenu({ drawing: item, mode: 'properties', x: point.x, y: point.y });
-          }}
-          onTextEdit={(item, point) => openTextEditor({
-            anchor: item.anchors[0],
-            drawing: item,
-            point,
-            tool: item.type
-          })}
-          onMoveStart={(event, item) => beginDrag(event, item, 'move')}
-          overlayWidth={overlaySize.width}
-          selected={selectedDrawingId === drawing.id}
+          key={`${pattern.type}-${pattern.time || index}`}
+          pattern={pattern}
           series={series}
-          onSelect={selectDrawing}
         />
       ))}
+      <g clipPath={`url(#${autoTrendClipId})`}>
+        {drawings.map(drawing => (
+          <DrawingShape
+            chartData={data}
+            chart={chart}
+            deleteDrawing={deleteDrawing}
+            drawing={drawing}
+            key={drawing.id}
+            onAnchorDragStart={(event, item, anchorIndex) => beginDrag(event, item, 'anchor', anchorIndex)}
+            onContextMenu={(event, item) => {
+              const point = getPointerPoint(event, overlayRef.current);
+              if (!point) return;
+              selectDrawing?.(item.id);
+              setContextMenu({ drawing: item, mode: 'actions', x: point.x, y: point.y });
+            }}
+            onDoubleClick={(event, item) => {
+              const point = getPointerPoint(event, overlayRef.current);
+              if (!point) return;
+              selectDrawing?.(item.id);
+              setContextMenu({ drawing: item, mode: 'properties', x: point.x, y: point.y });
+            }}
+            onTextEdit={(item, point) => openTextEditor({
+              anchor: item.anchors[0],
+              drawing: item,
+              point,
+              tool: item.type
+            })}
+            onMoveStart={(event, item) => beginDrag(event, item, 'move')}
+            overlayWidth={plotWidth}
+            selected={selectedDrawingId === drawing.id}
+            series={series}
+            onSelect={selectDrawing}
+          />
+        ))}
+      </g>
       {contextMenu && (
         <foreignObject
           className="drawing-context-menu-container"

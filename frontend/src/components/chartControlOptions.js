@@ -11,6 +11,8 @@ export const timeframeOptions = [
 
 export const chartStyleOptions = [
   { label: 'Candles', value: 'candles' },
+  { label: 'Heikin Ashi', value: 'heikinAshi' },
+  { label: 'Bars', value: 'bars' },
   { label: 'Line', value: 'line' },
   { label: 'Area', value: 'area' }
 ];

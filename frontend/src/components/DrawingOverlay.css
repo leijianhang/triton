@@ -100,6 +100,160 @@
   pointer-events: none;
 }
 
+.auto-fib {
+  pointer-events: none;
+}
+
+.auto-trendline {
+  pointer-events: none;
+}
+
+.auto-trendline-line {
+  fill: none;
+  stroke-width: 1.6;
+  opacity: .86;
+  vector-effect: non-scaling-stroke;
+}
+
+.auto-fib-level line {
+  stroke: rgba(255, 184, 77, .78);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.auto-fib-level text {
+  fill: #ffd08a;
+  paint-order: stroke;
+  stroke: rgba(8, 11, 15, .9);
+  stroke-width: 3px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.auto-fib-anchor-line {
+  stroke: rgba(255, 208, 138, .62);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.auto-fib-anchor {
+  fill: #101820;
+  stroke: #ffd08a;
+  stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.auto-fib-value-zone {
+  fill: rgba(255, 184, 77, .12);
+}
+
+.auto-fib-truth-line line {
+  stroke: rgba(217, 255, 240, .46);
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.auto-fib-truth-line text {
+  fill: #8d9aa7;
+  paint-order: stroke;
+  stroke: rgba(8, 11, 15, .92);
+  stroke-width: 3px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.heatmap-overlay {
+  pointer-events: none;
+}
+
+.heatmap-band rect {
+  vector-effect: non-scaling-stroke;
+}
+
+.heatmap-band line {
+  stroke: rgba(255, 34, 48, .95);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.heatmap-glow {
+  fill: #ff0000;
+  filter: blur(1.6px);
+}
+
+.heatmap-core {
+  fill: #ff0000;
+}
+
+.heatmap-sr-cell,
+.heatmap-depth-cell {
+  fill: #ff0000;
+  shape-rendering: crispEdges;
+  vector-effect: non-scaling-stroke;
+}
+
+.heatmap-depth-cell {
+  filter: blur(.35px);
+}
+
+.heatmap-classic-cell {
+  filter: blur(.8px);
+}
+
+.heatmap-trend-band line {
+  stroke: #ff2537;
+  stroke-width: 8;
+  stroke-linecap: round;
+  filter: blur(1.2px);
+  vector-effect: non-scaling-stroke;
+}
+
+.heatmap-trend-band .heatmap-trend-core {
+  stroke: rgba(255, 34, 48, .92);
+  stroke-width: 1.4;
+  filter: none;
+}
+
+.chart-pattern-overlay {
+  pointer-events: none;
+}
+
+.chart-pattern-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .92;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-pattern-neckline {
+  stroke-dasharray: 6 4;
+}
+
+.chart-pattern-target {
+  opacity: .7;
+  stroke-dasharray: 2 5;
+}
+
+.chart-pattern-label rect {
+  fill: rgba(8, 11, 15, .82);
+  stroke: currentColor;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-pattern-label text {
+  fill: #eef4f8;
+  font-size: 10px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: rgba(8, 11, 15, .8);
+  stroke-width: 2px;
+}
+
 .drawing-channel-fill {
   opacity: .1;
   pointer-events: none;
@@ -390,6 +544,46 @@
 
 .theme-day .drawing-fib-guide {
   stroke: rgba(25, 135, 84, .34);
+}
+
+.theme-day .auto-fib-level line {
+  stroke: rgba(194, 111, 0, .66);
+}
+
+.theme-day .auto-fib-level text {
+  fill: #7c4a03;
+  stroke: rgba(255, 255, 255, .9);
+}
+
+.theme-day .auto-fib-anchor-line {
+  stroke: rgba(194, 111, 0, .54);
+}
+
+.theme-day .auto-fib-anchor {
+  fill: #ffffff;
+  stroke: #a86100;
+}
+
+.theme-day .auto-fib-value-zone {
+  fill: rgba(194, 111, 0, .08);
+}
+
+.theme-day .auto-fib-truth-line line {
+  stroke: rgba(25, 38, 52, .38);
+}
+
+.theme-day .auto-fib-truth-line text {
+  fill: #667789;
+  stroke: rgba(255, 255, 255, .9);
+}
+
+.theme-day .chart-pattern-label rect {
+  fill: rgba(255, 255, 255, .88);
+}
+
+.theme-day .chart-pattern-label text {
+  fill: #1f2933;
+  stroke: rgba(255, 255, 255, .82);
 }
 
 .theme-day .drawing-range-cap {

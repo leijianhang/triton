@@ -1,12 +1,14 @@
 import { findSymbol, marketSymbols } from './marketCatalog.js';
 
+const assetTypes = ['stock', 'us', 'hk'];
 const normalizeSymbol = value => String(value || '').trim().toUpperCase();
-
-const getSymbolType = item => (item?.type === 'futures' ? 'futures' : 'stock');
+const normalizeAssetType = type => (assetTypes.includes(type) ? type : 'stock');
+const getSymbolType = item => normalizeAssetType(item?.type);
 
 export const createDefaultWatchlistSymbols = () => ({
   stock: marketSymbols.filter(item => item.type === 'stock').slice(0, 3).map(item => item.symbol),
-  futures: marketSymbols.filter(item => item.type === 'futures').slice(0, 3).map(item => item.symbol)
+  us: marketSymbols.filter(item => item.type === 'us').slice(0, 3).map(item => item.symbol),
+  hk: marketSymbols.filter(item => item.type === 'hk').slice(0, 3).map(item => item.symbol)
 });
 
 const createGroup = ({ id, name, type, symbols = [], system = false, colorFlags = {} }) => ({
@@ -24,64 +26,57 @@ export const createDefaultWatchlistGroups = () => {
   return [
     createGroup({
       id: 'stock-default',
-      name: 'S&P 500 Index',
+      name: 'A股核心',
       type: 'stock',
       symbols: defaults.stock,
       system: true
     }),
     createGroup({
-      id: 'dow-30',
-      name: 'Dow Jones 30',
-      type: 'stock',
-      symbols: defaults.stock,
+      id: 'us-default',
+      name: 'US Large Caps',
+      type: 'us',
+      symbols: defaults.us,
       system: true
     }),
     createGroup({
-      id: 'russell-2000',
-      name: 'Russell 2000 Index',
-      type: 'stock',
-      symbols: defaults.stock,
-      system: true
-    }),
-    createGroup({
-      id: 'futures-default',
-      name: 'Futures Movers',
-      type: 'futures',
-      symbols: defaults.futures,
+      id: 'hk-default',
+      name: '港股核心',
+      type: 'hk',
+      symbols: defaults.hk,
       system: true
     })
   ];
 };
 
 export const normalizeWatchlistGroups = (groups, legacySymbols) => {
-  if (Array.isArray(groups) && groups.length > 0) {
-    return groups.map(group => createGroup(group));
-  }
+  const normalizedGroups = Array.isArray(groups) && groups.length > 0
+    ? groups
+      .map(group => createGroup({
+        ...group,
+        type: group.type === 'mixed' ? 'mixed' : normalizeAssetType(group.type)
+      }))
+    : [];
+
+  const defaultGroups = createDefaultWatchlistGroups();
+  const byId = new Map(normalizedGroups.map(group => [group.id, group]));
+  defaultGroups.forEach(group => {
+    if (!byId.has(group.id)) byId.set(group.id, group);
+  });
+
+  if (normalizedGroups.length > 0) return Array.from(byId.values());
 
   if (legacySymbols && !Array.isArray(legacySymbols)) {
-    return [
-      createGroup({
-        id: 'stock-default',
-        name: 'China Large Caps',
-        type: 'stock',
-        symbols: legacySymbols.stock || [],
-        system: true
-      }),
-      createGroup({
-        id: 'futures-default',
-        name: 'Futures Movers',
-        type: 'futures',
-        symbols: legacySymbols.futures || [],
-        system: true
-      })
-    ];
+    return defaultGroups.map(group => ({
+      ...group,
+      symbols: legacySymbols[group.type] || group.symbols
+    }));
   }
 
-  return createDefaultWatchlistGroups();
+  return defaultGroups;
 };
 
 const normalizeGroupType = type => (
-  type === 'stock' || type === 'futures' ? type : 'mixed'
+  type === 'mixed' || assetTypes.includes(type) ? type : 'mixed'
 );
 
 const createGroupId = (name, type, groups = []) => {
@@ -95,8 +90,7 @@ const createGroupId = (name, type, groups = []) => {
   return candidate;
 };
 
-const getDefaultGroupId = type => (type === 'futures' ? 'futures-default' : 'stock-default');
-
+const getDefaultGroupId = type => `${normalizeAssetType(type)}-default`;
 const getGroupById = (groups = [], groupId) => groups.find(group => group.id === groupId);
 
 const findSymbolInCatalog = (symbol, symbols = marketSymbols) => {
@@ -105,25 +99,24 @@ const findSymbolInCatalog = (symbol, symbols = marketSymbols) => {
 };
 
 export const isSymbolWatched = (watchlistState = {}, item) => {
+  const type = getSymbolType(item);
+  const symbol = normalizeSymbol(item?.symbol);
+
   if (Array.isArray(watchlistState)) {
-    const type = getSymbolType(item);
-    const symbol = normalizeSymbol(item?.symbol);
     return watchlistState
       .filter(group => group.type === type || group.type === 'mixed')
       .some(group => (group.symbols || []).map(normalizeSymbol).includes(symbol));
   }
 
-  const type = getSymbolType(item);
-  const symbol = normalizeSymbol(item?.symbol);
   return (watchlistState[type] || []).map(normalizeSymbol).includes(symbol);
 };
 
 export const toggleWatchlistSymbol = (watchlistState = {}, item) => {
-  if (Array.isArray(watchlistState)) {
-    const symbol = normalizeSymbol(item?.symbol);
-    const type = getSymbolType(item);
-    if (!symbol) return watchlistState;
+  const type = getSymbolType(item);
+  const symbol = normalizeSymbol(item?.symbol);
+  if (!symbol) return watchlistState;
 
+  if (Array.isArray(watchlistState)) {
     const watched = watchlistState
       .filter(group => group.type === type || group.type === 'mixed')
       .some(group => (group.symbols || []).map(normalizeSymbol).includes(symbol));
@@ -148,10 +141,6 @@ export const toggleWatchlistSymbol = (watchlistState = {}, item) => {
     });
   }
 
-  const type = getSymbolType(item);
-  const symbol = normalizeSymbol(item?.symbol);
-  if (!symbol) return watchlistState;
-
   const current = watchlistState[type] || [];
   const exists = current.map(normalizeSymbol).includes(symbol);
 
@@ -164,7 +153,7 @@ export const toggleWatchlistSymbol = (watchlistState = {}, item) => {
 };
 
 export const getWatchlistRowsFromSymbols = (watchlistSymbols = {}, type = 'stock', symbols = marketSymbols) => {
-  const targetType = type === 'futures' || type === 'Futures' ? 'futures' : 'stock';
+  const targetType = normalizeAssetType(type);
   return (watchlistSymbols[targetType] || [])
     .map(symbol => findSymbolInCatalog(symbol, symbols))
     .filter(item => item?.type === targetType);

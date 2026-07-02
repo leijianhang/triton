@@ -24,26 +24,26 @@ const secondStockPage = getSymbolSearchPage({
 
 assert.deepEqual(secondStockPage.items.map(item => item.symbol), ['600036']);
 
-const futuresSearch = getSymbolSearchPage({
+const usSearch = getSymbolSearchPage({
   symbols: marketSymbols,
-  type: 'futures',
-  query: 'IF',
+  type: 'us',
+  query: 'AAPL',
   page: 1,
   pageSize: 5
 });
 
-assert.equal(futuresSearch.total, 1);
-assert.equal(futuresSearch.items[0].symbol, 'IF2405');
+assert.equal(usSearch.total, 1);
+assert.equal(usSearch.items[0].symbol, 'AAPL');
 
 const correctedPage = getSymbolSearchPage({
   symbols: marketSymbols,
-  type: 'futures',
+  type: 'hk',
   query: '',
   page: 9,
   pageSize: 2
 });
 
 assert.equal(correctedPage.page, 2);
-assert.deepEqual(correctedPage.items.map(item => item.symbol), ['IF2405']);
+assert.deepEqual(correctedPage.items.map(item => item.symbol), ['3690.HK']);
 
 console.log('symbolSearchModel tests passed');

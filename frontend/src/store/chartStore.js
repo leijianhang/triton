@@ -35,7 +35,7 @@ const getInitialCurrentSymbol = () => {
     return {
       symbol: String(parsed.symbol),
       name: parsed.name ? String(parsed.name) : '',
-      type: parsed.type === 'futures' ? 'futures' : 'stock'
+      type: ['stock', 'us', 'hk'].includes(parsed.type) ? parsed.type : 'stock'
     };
   } catch {
     return { symbol: null, name: '', type: 'stock' };
@@ -125,6 +125,7 @@ export const useChartStore = create((set) => ({
     ma: { enabled: false, periods: [5, 10, 20, 60] },
     ema: { enabled: false, periods: [12, 26] },
     vwap: { enabled: false },
+    gonogo: { enabled: false },
     macd: { enabled: false, params: { fast: 12, slow: 26, signal: 9 } },
     rsi: { enabled: false, period: 14 },
     kdj: { enabled: false, params: { n: 9, m1: 3, m2: 3 } },
@@ -143,7 +144,6 @@ export const useChartStore = create((set) => ({
   patterns: {
     candlePatterns: null,
     chartPatterns: null,
-    theStratPatterns: null,
     showPatterns: true
   },
 

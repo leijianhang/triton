@@ -15,8 +15,15 @@ import TerminalTopBar from './components/TerminalTopBar';
 import ToolRail from './components/ToolRail';
 import RightInsightRail from './components/RightInsightRail';
 import BottomSignalDock from './components/BottomSignalDock';
-import { getFallbackMarketSymbols, loadLiveFutures, loadLiveMarketSymbols, searchLiveFutures, searchLiveStocks } from './data/liveMarketData';
-import { getSymbolSearchPage } from './data/symbolSearchModel';
+import {
+  assetTypeOptions,
+  getAssetTypeLabel,
+  loadPagedMarketSymbols
+} from './data/liveMarketData';
+import {
+  clampReplayIndex,
+  getDefaultReplayIndex
+} from './data/replayModel';
 import {
   chartStyleOptions,
   getChartStyleOption,
@@ -24,16 +31,15 @@ import {
   timeframeOptions
 } from './components/chartControlOptions';
 import { getQuoteSnapshotForBar } from './components/chartQuoteFormat';
-import { getChartTime, normalizeKlineRows } from './components/chartDataTransform';
+import { getChartTime, normalizeChartTime, normalizeKlineRows } from './components/chartDataTransform';
 import { hasActiveIndicators } from './components/indicatorLibrary';
 import { getWorkspaceLayout, getWorkspacePaneCount } from './components/workspaceLayoutOptions';
 import { reconcileWorkspacePaneSettings, syncAllPaneSymbols } from './components/workspacePaneSettings';
 import { getPaneDataKey, getPaneKlineData, setPaneKlineData } from './components/workspacePaneData';
 import { clearStoredPatternSelections, getStoredPatternSelections } from './components/patternSelection';
-import { hasActivePatterns } from './components/patternMarkers';
 import { getStrategyTradeMarkers } from './data/strategyTesterModel';
 import { useChartStore } from './store/chartStore';
-import { authAPI, futuresAPI, patternAPI, stockAPI } from './services/api';
+import { marketAPI, patternAPI } from './services/api';
 import './App.css';
 
 const dockFeatures = {
@@ -105,6 +111,16 @@ const formatSignedPercent = value => {
 };
 
 const THEME_STORAGE_KEY = 'signalforge.themePreference.v1';
+const AUTO_FIB_STORAGE_KEY = 'signalforge.autoFibEnabled.v1';
+const HEATMAP_STORAGE_KEY = 'signalforge.heatmap.v1';
+const AUTO_TRENDS_STORAGE_KEY = 'signalforge.autoTrends.v1';
+const SKIP_LOGIN_PAGE = true;
+const heatmapTypeOptions = [
+  { value: 'horizontal', label: 'Horizontal' },
+  { value: 'depth', label: 'Depth' },
+  { value: 'classic', label: 'Trends' },
+  { value: 'none', label: 'None' }
+];
 const getTimeBasedTheme = (timestamp = Date.now()) => {
   const hour = new Date(timestamp).getHours();
   return hour >= 7 && hour < 19 ? 'day' : 'night';
@@ -114,10 +130,10 @@ const resolveThemePreference = (preference, timestamp) => (preference === 'auto'
 const featurePanelMeta = {
   Layout: { title: '布局', width: 720 },
   'Auto Fib': { title: '自动斐波那契', width: 740 },
-  Trends: { title: '趋势线检测', width: 740 },
-  Patterns: { title: '形态', width: 560 },
-  'The Strat': { title: 'The Strat', width: 560 },
-  Heatmap: { title: '市场热力图', width: 760 },
+  Trends: { title: 'TRENDS', width: 360 },
+  Patterns: { title: 'Candle Patterns', width: 560 },
+  'Chart Patterns': { title: 'Chart Patterns', width: 560 },
+  Heatmap: { title: 'HEATMAP SETTINGS', width: 360 },
   Scripts: { title: '脚本管理', width: 760 },
   Compare: { title: '标的对比', width: 680 },
   'Chart Settings': { title: '图表设置', width: 680 },
@@ -137,12 +153,6 @@ const heatmapRows = [
   { name: 'Copper', value: '+1.8%', tone: 'hot' },
   { name: 'Banks', value: '-0.3%', tone: 'cool' },
   { name: 'Gold', value: '+1.1%', tone: 'warm' }
-];
-const patternCategoryOptions = [
-  { value: 'all', label: '全部形态' },
-  { value: 'thestrat', label: 'TheStrat' },
-  { value: 'candlestick', label: 'K线形态' },
-  { value: 'chart', label: '图表形态' }
 ];
 const patternCatalog = [
   { name: '1-2D Inside Break', category: 'thestrat', status: 'Ready', type: 'TheStrat' },
@@ -176,24 +186,193 @@ const patternCatalog = [
   { name: 'Bearish Engulfing', category: 'candlestick', status: 'Ready', type: 'Candlestick', backendType: 'bearish_engulfing' },
   { name: 'Morning Star', category: 'candlestick', status: 'Ready', type: 'Candlestick', backendType: 'morning_star' },
   { name: 'Evening Star', category: 'candlestick', status: 'Ready', type: 'Candlestick', backendType: 'evening_star' },
-  { name: 'Head and Shoulders Top', category: 'chart', status: 'Ready', type: 'Chart', backendType: 'head_and_shoulders_top' },
-  { name: 'Head and Shoulders Bottom', category: 'chart', status: 'Ready', type: 'Chart', backendType: 'head_and_shoulders_bottom' },
+  { name: 'Triangle, Ascending', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'ascending_triangle' },
+  { name: 'Triangle, Descending', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'descending_triangle' },
+  { name: 'Triangle, Symmetrical', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'symmetrical_triangle' },
   { name: 'Double Top', category: 'chart', status: 'Ready', type: 'Chart', backendType: 'double_top' },
   { name: 'Double Bottom', category: 'chart', status: 'Ready', type: 'Chart', backendType: 'double_bottom' },
-  { name: 'Ascending Triangle', category: 'chart', status: 'Ready', type: 'Chart', backendType: 'ascending_triangle' },
-  { name: 'Descending Triangle', category: 'chart', status: 'Ready', type: 'Chart', backendType: 'descending_triangle' },
-  { name: 'Symmetrical Triangle', category: 'chart', status: 'Ready', type: 'Chart', backendType: 'symmetrical_triangle' },
-  { name: 'Bull Flag', category: 'chart', status: 'Ready', type: 'Chart', backendType: 'bull_flag' },
-  { name: 'Bear Flag', category: 'chart', status: 'Ready', type: 'Chart', backendType: 'bear_flag' }
+  { name: 'Channel, Horizontal', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'horizontal_channel' },
+  { name: 'Channel, Ascending', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'ascending_channel' },
+  { name: 'Channel, Descending', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'descending_channel' },
+  { name: 'Head and Shoulders', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'head_and_shoulders_top' },
+  { name: 'Inverse Head and Shoulders', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'head_and_shoulders_bottom' },
+  { name: 'Wedge, Rising', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'rising_wedge' },
+  { name: 'Wedge, Falling', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'falling_wedge' },
+  { name: 'Cup and Handle', category: 'chart', status: 'Ready', type: 'Chart Pattern', backendType: 'cup_and_handle' }
 ];
 
 const getApiErrorMessage = (error, fallback) =>
   error?.response?.data?.error || error?.response?.data?.message || error?.message || fallback;
 
+const getScanPatternList = (response, groupKey) => {
+  const patterns = response?.data?.[groupKey]?.patterns;
+  return Array.isArray(patterns) ? patterns : [];
+};
+
+const getPatternScanData = (rows = []) => {
+  if (!Array.isArray(rows)) return [];
+  return rows;
+};
+
+const CANDLE_PATTERN_INCREMENTAL_OVERLAP = 8;
+
+const getNormalizedPatternTime = value => {
+  try {
+    return normalizeChartTime(value);
+  } catch {
+    return value;
+  }
+};
+
+const getPatternKey = value => String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+const getSelectedPatternNames = group => (Array.isArray(group?.selected) ? group.selected.filter(Boolean) : []);
+const isPatternGroupVisible = (group, showPatterns = true) => {
+  const selected = getSelectedPatternNames(group);
+  if (!selected.length || showPatterns === false) return false;
+  const hiddenKeys = (Array.isArray(group?.hidden) ? group.hidden : []).map(getPatternKey);
+  return selected.some(name => !hiddenKeys.includes(getPatternKey(name)));
+};
+
 const getCatalogItem = name => patternCatalog.find(item => item.name === name);
+const getCatalogItemsFromNames = names => (Array.isArray(names) ? names : []).map(getCatalogItem).filter(Boolean);
+const hasCandlePatternSelection = (items = []) => items.some(item => item.category === 'candlestick' || item.category === 'thestrat');
+const hasChartPatternSelection = (items = []) => items.some(item => item.category === 'chart');
+
+const getPatternRowTimeKey = row => {
+  try {
+    return normalizeChartTime(row?.time);
+  } catch {
+    return null;
+  }
+};
+
+const normalizeCandlePatternRows = (rows = []) => {
+  const rowsByTime = new Map();
+
+  rows.forEach(row => {
+    const time = getPatternRowTimeKey(row);
+    if (time === null) return;
+    const patterns = Array.isArray(row?.patterns) ? row.patterns.filter(Boolean) : [];
+    if (!patterns.length) return;
+
+    const existing = rowsByTime.get(time) || { ...row, time, patterns: [] };
+    const patternKeys = new Set(existing.patterns.map(pattern => getPatternKey(pattern?.type || pattern?.name)));
+    patterns.forEach(pattern => {
+      const key = getPatternKey(pattern?.type || pattern?.name);
+      if (!key || patternKeys.has(key)) return;
+      patternKeys.add(key);
+      existing.patterns.push(pattern);
+    });
+    rowsByTime.set(time, existing);
+  });
+
+  return Array.from(rowsByTime.entries())
+    .sort(([leftTime], [rightTime]) => leftTime - rightTime)
+    .map(([, row]) => row);
+};
+
+const countCandlePatternRows = rows => (Array.isArray(rows) ? rows : [])
+  .reduce((count, row) => count + (Array.isArray(row?.patterns) ? row.patterns.length : 0), 0);
+
+const mergeCandlePatternGroups = (previousGroup = {}, scannedGroup = {}) => {
+  const scannedRows = normalizeCandlePatternRows(scannedGroup.patterns || []);
+  const scannedTimes = new Set(scannedRows.map(getPatternRowTimeKey).filter(time => time !== null));
+  const previousRows = (previousGroup.patterns || []).filter(row => !scannedTimes.has(getPatternRowTimeKey(row)));
+  const patterns = normalizeCandlePatternRows([...scannedRows, ...previousRows]);
+
+  return {
+    ...previousGroup,
+    ...scannedGroup,
+    patterns,
+    count: countCandlePatternRows(patterns),
+    hidden: previousGroup.hidden || scannedGroup.hidden || []
+  };
+};
+
+const getFrontAppendedPatternRows = (previousRows = [], currentRows = []) => {
+  if (!previousRows.length || currentRows.length <= previousRows.length) return null;
+
+  const appendedCount = currentRows.length - previousRows.length;
+  const currentLastTime = getPatternRowTimeKey(currentRows.at(-1));
+  const previousLastTime = getPatternRowTimeKey(previousRows.at(-1));
+  const currentFirstPreviousTime = getPatternRowTimeKey(currentRows[appendedCount]);
+  const previousFirstTime = getPatternRowTimeKey(previousRows[0]);
+
+  if (
+    currentLastTime === null
+    || previousLastTime === null
+    || currentFirstPreviousTime === null
+    || previousFirstTime === null
+  ) {
+    return null;
+  }
+
+  if (currentLastTime !== previousLastTime || currentFirstPreviousTime !== previousFirstTime) return null;
+
+  return currentRows.slice(0, Math.min(currentRows.length, appendedCount + CANDLE_PATTERN_INCREMENTAL_OVERLAP));
+};
+
+const emptyPatternResponse = {
+  success: true,
+  data: {
+    candlePatterns: { count: 0, patterns: [] },
+    chartPatterns: { count: 0, patterns: [] },
+    total: 0
+  },
+  errors: {
+    candlePatterns: null,
+    chartPatterns: null
+  }
+};
+
+const scanSelectedPatternGroups = (rows, selectedItems, options = {}) => {
+  const candleRequest = hasCandlePatternSelection(selectedItems)
+    ? patternAPI.scanCandle(options.candleRows || rows)
+    : null;
+  const chartRequest = hasChartPatternSelection(selectedItems)
+    ? patternAPI.scanChart(rows)
+    : null;
+
+  if (!candleRequest && !chartRequest) return Promise.resolve(emptyPatternResponse);
+  if (candleRequest && !chartRequest) return candleRequest;
+  if (!candleRequest && chartRequest) return chartRequest;
+
+  return Promise.all([candleRequest, chartRequest]).then(([candleResponse, chartResponse]) => {
+    const candlePatterns = candleResponse?.data?.candlePatterns || emptyPatternResponse.data.candlePatterns;
+    const chartPatterns = chartResponse?.data?.chartPatterns || emptyPatternResponse.data.chartPatterns;
+    return {
+      success: candleResponse?.success !== false && chartResponse?.success !== false,
+      data: {
+        candlePatterns,
+        chartPatterns,
+        total: (candlePatterns.count || 0) + (chartPatterns.count || 0)
+      },
+      errors: {
+        candlePatterns: candleResponse?.errors?.candlePatterns ?? null,
+        chartPatterns: chartResponse?.errors?.chartPatterns ?? null
+      }
+    };
+  });
+};
+const candlePanelCatalogItems = patternCatalog.filter(item => item.category === 'candlestick' || item.category === 'thestrat');
+const chartPatternCatalogItems = patternCatalog.filter(item => item.category === 'chart');
+const chartPatternTypes = chartPatternCatalogItems.map(item => item.backendType);
+const getChartPatternCatalogItemByType = type => chartPatternCatalogItems.find(item => item.backendType === type);
+
+const normalizeChartPatternMatch = (pattern, data = []) => {
+  const catalogItem = getChartPatternCatalogItemByType(pattern.type);
+  return {
+    ...pattern,
+    name: catalogItem?.name || pattern.name,
+    label: catalogItem?.name || pattern.name,
+    time: getNormalizedPatternTime(getChartPatternTime(pattern, data))
+  };
+};
 
 const getChartPatternTime = (pattern, data = []) => {
   const candidateIndex =
+    pattern.handleEnd?.index ??
+    pattern.rightRim?.index ??
     pattern.rightShoulder?.index ??
     pattern.secondTop?.index ??
     pattern.secondBottom?.index ??
@@ -208,16 +387,71 @@ const getChartPatternTime = (pattern, data = []) => {
   return data.at?.(-1)?.time;
 };
 
+const buildSelectedPatternGroups = ({ response, selectedItems, klineData, previousPatterns = {} }) => {
+  const selectedTheStratNames = selectedItems.filter(item => item.category === 'thestrat').map(item => item.name);
+  const selectedCandleTypes = selectedItems.filter(item => item.category === 'candlestick').map(item => item.backendType);
+  const selectedChartTypes = selectedItems.filter(item => item.category === 'chart').map(item => item.backendType);
+  const selectedCandleRows = getScanPatternList(response, 'candlePatterns')
+    .map(row => ({
+      ...(row || {}),
+      patterns: Array.isArray(row?.patterns)
+        ? row.patterns.filter(pattern => (
+          selectedCandleTypes.includes(pattern?.type)
+          || selectedTheStratNames.includes(pattern?.name)
+        ))
+        : []
+    }))
+    .filter(row => row.patterns.length > 0);
+  const selectedChartMatches = getScanPatternList(response, 'chartPatterns')
+    .filter(pattern => selectedChartTypes.includes(pattern?.type))
+    .map(pattern => normalizeChartPatternMatch(pattern, klineData));
+  const mergedCandleRows = normalizeCandlePatternRows(selectedCandleRows);
+
+  return {
+    candlePatterns: {
+      count: countCandlePatternRows(mergedCandleRows),
+      patterns: mergedCandleRows,
+      selected: selectedItems.filter(item => item.category === 'candlestick' || item.category === 'thestrat').map(item => item.name),
+      hidden: previousPatterns.candlePatterns?.hidden || []
+    },
+    chartPatterns: {
+      count: selectedChartMatches.length,
+      patterns: selectedChartMatches,
+      selected: selectedItems.filter(item => item.category === 'chart').map(item => item.name),
+      hidden: previousPatterns.chartPatterns?.hidden || []
+    }
+  };
+};
+
 const SYMBOL_SEARCH_PAGE_SIZE = 2;
 const symbolTypeTabs = [
-  { key: 'stock', label: '股票' },
-  { key: 'futures', label: '期货' }
+  { key: 'all', label: '全部' },
+  ...assetTypeOptions
 ];
+const normalizeAssetType = type => (assetTypeOptions.some(option => option.key === type) ? type : 'stock');
+const getSymbolSearchTypeLabel = type => (type === 'all' ? '全部' : getAssetTypeLabel(type));
+const fetchMarketKline = (type, symbol, period, options = {}) =>
+  marketAPI.getKline(normalizeAssetType(type), symbol, period, options);
 
-function FeaturePanel({ feature, currentSymbol, currentName, period, klineData = [], onClose }) {
-  const [patternCategory, setPatternCategory] = useState('all');
+function FeaturePanel({
+  feature,
+  currentSymbol,
+  currentName,
+  period,
+  klineData = [],
+  autoFibEnabled = false,
+  autoTrendSettings = { analysisType: 'standard', drawingInput: 'wick', enabled: false, islands: 'respect', quality: 'relevant' },
+  heatmapType = 'horizontal',
+  onAutoFibToggle,
+  onAutoTrendSettingsChange,
+  onHeatmapTypeChange,
+  onClose
+}) {
+  const [patternCategory, setPatternCategory] = useState('chart');
   const [patternQuery, setPatternQuery] = useState('');
   const [patternScanState, setPatternScanState] = useState({ loading: false, result: null, error: null });
+  const [heatmapDraftType, setHeatmapDraftType] = useState(heatmapType);
+  const [autoTrendDraft, setAutoTrendDraft] = useState(autoTrendSettings);
   const storedPatterns = useChartStore(state => state.patterns);
   const setPatterns = useChartStore(state => state.setPatterns);
   const [selectedPatterns, setSelectedPatterns] = useState(() => getStoredPatternSelections(storedPatterns));
@@ -227,12 +461,20 @@ function FeaturePanel({ feature, currentSymbol, currentName, period, klineData =
 
   useEffect(() => {
     if (feature === 'Patterns') {
+      setPatternCategory('all');
       setSelectedPatterns(getStoredPatternSelections(storedPatterns));
     }
-    if (feature === 'The Strat') {
-      setSelectedPatterns(getStoredPatternSelections(storedPatterns, 'thestrat'));
+    if (feature === 'Chart Patterns') {
+      setPatternCategory('chart');
+      setSelectedPatterns(getStoredPatternSelections(storedPatterns, 'chart'));
     }
-  }, [feature, storedPatterns]);
+    if (feature === 'Heatmap') {
+      setHeatmapDraftType(heatmapType);
+    }
+    if (feature === 'Trends') {
+      setAutoTrendDraft(autoTrendSettings);
+    }
+  }, [autoTrendSettings, feature, heatmapType, storedPatterns]);
 
   if (feature === 'Layout') {
     return (
@@ -268,52 +510,136 @@ function FeaturePanel({ feature, currentSymbol, currentName, period, klineData =
           ))}
         </div>
         <div className="feature-option-grid compact">
-          {['最近主要摆动', '可见区间', '向右延伸水平位', '显示共振区域'].map(item => (
-            <button key={item} type="button"><span>{item}</span><em>切换</em></button>
+          <button
+            className={autoFibEnabled ? 'active' : ''}
+            type="button"
+            onClick={() => onAutoFibToggle?.()}
+          >
+            <span>自动绘制</span>
+            <em>{autoFibEnabled ? '已开启' : '已关闭'}</em>
+          </button>
+          {['可见区间', '向右延伸水平位', '显示 38.2-61.8 区域'].map(item => (
+            <button key={item} type="button"><span>{item}</span><em>已启用</em></button>
           ))}
         </div>
         <div className="feature-status-strip">
           <span>{activeContext}</span>
-          <span>摆动来源：可见图表</span>
+          <span>状态：{autoFibEnabled ? '自动斐波那契开启' : '自动斐波那契关闭'}</span>
+          <span>摆动来源：当前可见图表</span>
         </div>
       </div>
     );
   }
 
   if (feature === 'Trends') {
-    const rows = ['价格趋势线', '水平价位', '成交量确认', '突破提醒'];
+    const analysisOptions = [
+      { value: 'original', label: 'Original' },
+      { value: 'standard', label: 'Standard' },
+      { value: 'enhanced', label: 'Enhanced' }
+    ];
+    const drawingInputOptions = [
+      { value: 'wick', label: 'Wick (H/L)' },
+      { value: 'body', label: 'Body (O/C)' }
+    ];
+    const islandOptions = [
+      { value: 'respect', label: 'Respect' },
+      { value: 'ignore', label: 'Ignore' }
+    ];
+    const qualityOptions = [
+      { value: 'relevant', label: 'Most Relevant' },
+      { value: 'more', label: 'More Lines' },
+      { value: 'all', label: 'All' }
+    ];
+    const updateAutoTrendDraft = patch => {
+      setAutoTrendDraft(draft => ({
+        ...draft,
+        ...patch
+      }));
+    };
+    const applyAutoTrendSettings = () => {
+      onAutoTrendSettingsChange?.({
+        ...autoTrendDraft,
+        appliedAt: Date.now(),
+        enabled: true
+      });
+      onClose?.();
+    };
 
     return (
-      <div className="feature-modal-body detection-panel">
-        <p>自动查找支撑、阻力和突破线。</p>
-        <div className="detection-table">
-          {rows.map((row, index) => (
-            <button key={row} type="button">
-              <strong>{row}</strong>
-              <span>{index % 2 === 0 ? '已启用' : '就绪'}</span>
-              <em>{92 - index * 7}%</em>
-            </button>
-          ))}
+      <div className="feature-modal-body trendspider-settings-panel">
+        <h3>AUTOMATED TREND LINES SETTINGS</h3>
+        <div className="trendspider-settings-list">
+          <label className="trendspider-settings-row">
+            <span>Analysis Type</span>
+            <select
+              value={autoTrendDraft.analysisType}
+              onChange={event => updateAutoTrendDraft({ analysisType: event.target.value })}
+            >
+              {analysisOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="trendspider-settings-row">
+            <span>Drawing Input</span>
+            <select
+              value={autoTrendDraft.drawingInput}
+              onChange={event => updateAutoTrendDraft({ drawingInput: event.target.value })}
+            >
+              {drawingInputOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="trendspider-settings-row">
+            <span>Islands (Gaps)</span>
+            <select
+              value={autoTrendDraft.islands}
+              onChange={event => updateAutoTrendDraft({ islands: event.target.value })}
+            >
+              {islandOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="trendspider-settings-row">
+            <span>Quality</span>
+            <select
+              value={autoTrendDraft.quality}
+              onChange={event => updateAutoTrendDraft({ quality: event.target.value })}
+            >
+              {qualityOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
-        <div className="feature-status-strip">
-          <span>{activeContext}</span>
-          <span>检测范围：可见区间</span>
+        <div className="trendspider-settings-actions">
+          <button
+            className="secondary"
+            type="button"
+          >
+            ADVANCED
+          </button>
+          <button type="button" onClick={applyAutoTrendSettings}>APPLY</button>
         </div>
       </div>
     );
   }
 
-  if (feature === 'Patterns') {
+  if (feature === 'Patterns' || feature === 'Chart Patterns') {
+    const isChartPatternPanel = feature === 'Chart Patterns';
+    const panelCategoryOptions = isChartPatternPanel
+      ? [{ value: 'chart', label: 'Chart Patterns' }]
+      : [{ value: 'all', label: 'Candle Patterns' }];
+    const patternSource = isChartPatternPanel ? chartPatternCatalogItems : candlePanelCatalogItems;
     const normalizedQuery = patternQuery.trim().toLowerCase();
-    const visiblePatterns = patternCatalog.filter(item => (
+    const visiblePatterns = patternSource.filter(item => (
       (patternCategory === 'all' || item.category === patternCategory)
       && (!normalizedQuery || item.name.toLowerCase().includes(normalizedQuery) || item.type.toLowerCase().includes(normalizedQuery))
     ));
     const activePattern = visiblePatterns.find(item => selectedPatterns.includes(item.name));
     const selectedItems = selectedPatterns.map(getCatalogItem).filter(Boolean);
-    const selectedTheStratNames = selectedItems.filter(item => item.category === 'thestrat').map(item => item.name);
-    const selectedCandleTypes = selectedItems.filter(item => item.category === 'candlestick').map(item => item.backendType);
-    const selectedChartTypes = selectedItems.filter(item => item.category === 'chart').map(item => item.backendType);
     const hasChartData = Array.isArray(klineData) && klineData.length > 1;
     const togglePatternSelection = (name) => {
       setSelectedPatterns(current =>
@@ -324,53 +650,56 @@ function FeaturePanel({ feature, currentSymbol, currentName, period, klineData =
     };
     const applyPattern = async () => {
       if (selectedItems.length === 0) {
-        setPatterns(clearStoredPatternSelections(storedPatterns));
+        if (isChartPatternPanel) {
+          setPatterns({
+            ...storedPatterns,
+            chartPatterns: {
+              count: 0,
+              patterns: [],
+              selected: [],
+              hidden: []
+            },
+            showPatterns: true
+          });
+        } else {
+          setPatterns(clearStoredPatternSelections(storedPatterns));
+        }
         setPatternScanState({ loading: false, result: { count: 0 }, error: null });
         onClose?.();
         return;
       }
       if (!hasChartData) {
-        setPatternScanState({ loading: false, result: null, error: '应用 TheStrat 形态前请先加载图表。' });
+        setPatternScanState({ loading: false, result: null, error: '应用形态前请先加载图表。' });
         return;
       }
       setPatternScanState({ loading: true, result: null, error: null });
       try {
-        const response = await patternAPI.scanAll(klineData);
+        const response = await scanSelectedPatternGroups(getPatternScanData(klineData), selectedItems);
         if (!response.success) throw new Error(response.error || '形态扫描失败');
-        const selectedTheStratMatches = response.data.theStratPatterns.patterns.filter(item => selectedTheStratNames.includes(item.pattern.name));
-        const selectedCandleRows = response.data.candlePatterns.patterns
-          .map(row => ({
-            ...row,
-            patterns: row.patterns.filter(pattern => selectedCandleTypes.includes(pattern.type))
-          }))
-          .filter(row => row.patterns.length > 0);
-        const selectedChartMatches = response.data.chartPatterns.patterns
-          .filter(pattern => selectedChartTypes.includes(pattern.type))
-          .map(pattern => ({
-            ...pattern,
-            time: getChartPatternTime(pattern, klineData)
-          }));
+        const nextGroups = buildSelectedPatternGroups({
+          response,
+          selectedItems,
+          klineData,
+          previousPatterns: storedPatterns
+        });
+        if (isChartPatternPanel) {
+          const nextPatterns = {
+            ...storedPatterns,
+            chartPatterns: nextGroups.chartPatterns,
+            showPatterns: true
+          };
+          setPatterns(nextPatterns);
+          setPatternScanState({ loading: false, result: { count: nextGroups.chartPatterns.count }, error: null });
+          onClose?.();
+          return;
+        }
         const nextPatterns = {
           ...storedPatterns,
-          candlePatterns: {
-            count: selectedCandleRows.reduce((count, row) => count + row.patterns.length, 0),
-            patterns: selectedCandleRows,
-            selected: selectedItems.filter(item => item.category === 'candlestick').map(item => item.name)
-          },
-          chartPatterns: {
-            count: selectedChartMatches.length,
-            patterns: selectedChartMatches,
-            selected: selectedItems.filter(item => item.category === 'chart').map(item => item.name)
-          },
-          theStratPatterns: {
-            count: selectedTheStratMatches.length,
-            patterns: selectedTheStratMatches,
-            selected: selectedTheStratNames
-          },
+          candlePatterns: nextGroups.candlePatterns,
           showPatterns: true
         };
         setPatterns(nextPatterns);
-        setPatternScanState({ loading: false, result: { count: nextPatterns.candlePatterns.count + nextPatterns.chartPatterns.count + nextPatterns.theStratPatterns.count }, error: null });
+        setPatternScanState({ loading: false, result: { count: nextGroups.candlePatterns.count }, error: null });
         onClose?.();
       } catch (error) {
         setPatternScanState({ loading: false, result: null, error: getApiErrorMessage(error, '形态扫描失败') });
@@ -380,21 +709,16 @@ function FeaturePanel({ feature, currentSymbol, currentName, period, klineData =
     return (
       <div className="feature-modal-body pattern-selector-panel">
         <div className="pattern-selector-toolbar">
-          <select value={patternCategory} onChange={event => setPatternCategory(event.target.value)}>
-            {patternCategoryOptions.map(item => (
-              <option key={item.value} value={item.value}>{item.label}</option>
-            ))}
-          </select>
           <Input
             allowClear
             className="pattern-search-input"
             onChange={event => setPatternQuery(event.target.value)}
-            placeholder="搜索形态"
+            placeholder={isChartPatternPanel ? '搜索 Chart Patterns' : '搜索形态'}
             prefix={<SearchOutlined />}
             value={patternQuery}
           />
         </div>
-        <div className="pattern-selector-list" role="listbox" aria-label="形态列表">
+        <div className="pattern-selector-list" role="listbox" aria-label={isChartPatternPanel ? 'Chart Patterns 列表' : '形态列表'}>
           {visiblePatterns.length > 0 ? (
             visiblePatterns.map(item => (
               <button
@@ -420,7 +744,7 @@ function FeaturePanel({ feature, currentSymbol, currentName, period, klineData =
         <div className="pattern-selector-footer">
           <span>
             {activePattern ? <strong>{activePattern.name}</strong> : null}
-            <em>{selectedPatterns.length} 个已选择 路 {patternCategoryOptions.find(item => item.value === patternCategory)?.label} 路 {activeContext}</em>
+            <em>{selectedPatterns.length} 个已选择 路 {panelCategoryOptions.find(item => item.value === patternCategory)?.label} 路 {activeContext}</em>
           </span>
           <div>
             <button className="secondary" onClick={onClose} type="button">取消</button>
@@ -433,118 +757,36 @@ function FeaturePanel({ feature, currentSymbol, currentName, period, klineData =
     );
   }
 
-  if (feature === 'The Strat') {
-    const hasChartData = Array.isArray(klineData) && klineData.length > 1;
-    const theStratSelections = selectedPatterns.filter(name =>
-      patternCatalog.find(item => item.name === name)?.category === 'thestrat'
-    );
-    const togglePatternSelection = (name) => {
-      setSelectedPatterns(current =>
-        current.includes(name)
-          ? current.filter(item => item !== name)
-          : [...current, name]
-      );
-    };
-    const scanTheStrat = async () => {
-      if (theStratSelections.length === 0) {
-        setPatterns({
-          ...storedPatterns,
-          theStratPatterns: {
-            count: 0,
-            patterns: [],
-            selected: [],
-            hidden: []
-          },
-          showPatterns: true
-        });
-        setPatternScanState({ loading: false, result: { count: 0 }, error: null });
-        onClose?.();
-        return;
-      }
-      if (!hasChartData) {
-        setPatternScanState({ loading: false, result: null, error: '应用 TheStrat 形态前请先加载图表。' });
-        return;
-      }
-      setPatternScanState({ loading: true, result: null, error: null });
-      try {
-        const response = await patternAPI.scanTheStrat(klineData);
-        if (!response.success) throw new Error(response.error || 'TheStrat 扫描失败');
-        const selectedMatches = response.data.patterns.filter(item => theStratSelections.includes(item.pattern.name));
-        const nextPatterns = {
-          ...storedPatterns,
-          theStratPatterns: {
-            count: selectedMatches.length,
-            patterns: selectedMatches,
-            selected: theStratSelections
-          },
-          showPatterns: true
-        };
-        setPatterns(nextPatterns);
-        setPatternScanState({ loading: false, result: nextPatterns.theStratPatterns, error: null });
-        onClose?.();
-      } catch (error) {
-        setPatternScanState({ loading: false, result: null, error: getApiErrorMessage(error, 'TheStrat 扫描失败') });
-      }
-    };
-
-    return (
-      <div className="feature-modal-body pattern-selector-panel">
-        <div className="pattern-selector-toolbar">
-          <select defaultValue="thestrat">
-            <option value="thestrat">TheStrat</option>
-          </select>
-          <Input allowClear className="pattern-search-input" placeholder="搜索 TheStrat 形态" prefix={<SearchOutlined />} />
-        </div>
-        <div className="pattern-selector-list" role="listbox" aria-label="TheStrat 形态列表">
-          {patternCatalog.filter(item => item.category === 'thestrat').map(item => (
-              <button
-                className={selectedPatterns.includes(item.name) ? 'active' : ''}
-                key={item.name}
-                onClick={() => togglePatternSelection(item.name)}
-                type="button"
-              >
-                <strong><i />{item.name}</strong>
-                <span>{item.type}</span>
-                <em>{selectedPatterns.includes(item.name) ? '已选择' : (item.status === 'Ready' ? '就绪' : item.status)}</em>
-              </button>
-            ))}
-        </div>
-        <div className="pattern-selector-message">
-          {!hasChartData ? <span className="error">应用形态前请先加载图表。</span> : null}
-          {patternScanState.result ? <span>当前图表找到 {patternScanState.result.count} 个匹配。</span> : null}
-          {patternScanState.error ? <span className="error">{patternScanState.error}</span> : null}
-        </div>
-        <div className="pattern-selector-footer">
-          <span>
-            {theStratSelections[0] ? <strong>{theStratSelections[0]}</strong> : null}
-            <em>{theStratSelections.length} 个已选择 路 TheStrat 路 {activeContext}</em>
-          </span>
-          <div>
-            <button className="secondary" onClick={onClose} type="button">取消</button>
-            <button disabled={patternScanState.loading || !hasChartData} onClick={scanTheStrat} type="button">
-              {patternScanState.loading ? '应用中...' : '应用'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   if (feature === 'Heatmap') {
+    const applyHeatmapSettings = () => {
+      onHeatmapTypeChange?.(heatmapDraftType);
+      onClose?.();
+    };
+
     return (
       <div className="feature-modal-body heatmap-panel">
-        <p>在一个紧凑面板中对比板块、期货和自选列表表现。</p>
-        <div className="heatmap-grid">
-          {heatmapRows.map(item => (
-            <button className={item.tone} key={item.name} type="button">
-              <strong>{item.name}</strong>
-              <span>{item.value}</span>
-            </button>
-          ))}
+        <div className="trendspider-settings-list">
+          <label className="trendspider-settings-row">
+            <span>Heatmap Type</span>
+            <select
+              value={heatmapDraftType}
+              onChange={event => setHeatmapDraftType(event.target.value)}
+            >
+              {heatmapTypeOptions.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
-        <div className="feature-status-strip">
-          <span>{activeContext}</span>
-          <span>范围：A股 + 期货</span>
+        <div className="pattern-selector-footer heatmap-settings-footer">
+          <span>
+            <strong>HEATMAP SETTINGS</strong>
+            <em>{activeContext}</em>
+          </span>
+          <div>
+            <button className="secondary" onClick={onClose} type="button">Cancel</button>
+            <button onClick={applyHeatmapSettings} type="button">Apply</button>
+          </div>
         </div>
       </div>
     );
@@ -570,8 +812,8 @@ function FeaturePanel({ feature, currentSymbol, currentName, period, klineData =
 
   const fallbackPanels = {
     Compare: {
-      lead: '将另一个股票或期货合约叠加到当前图表上对比。',
-      items: ['添加 A 股标的', '添加期货合约', '归一化表现', '显示相关性']
+      lead: '将另一个 A 股、美股或港股标的叠加到当前图表上对比。',
+      items: ['添加 A 股标的', '添加美股标的', '添加港股标的', '归一化表现']
     },
     'Chart Settings': {
       lead: '控制图表显示、坐标轴、交易时段和画线行为。',
@@ -604,6 +846,70 @@ function FeaturePanel({ feature, currentSymbol, currentName, period, klineData =
   );
 }
 
+function ReplayControls({
+  enabled,
+  index,
+  length,
+  playing,
+  selecting = false,
+  speed,
+  currentTime,
+  onBack,
+  onClose,
+  onForward,
+  onGoLive,
+  onIndexChange,
+  onPlayToggle,
+  onReset,
+  onSpeedChange
+}) {
+  if (!enabled || length <= 0) return null;
+
+  const maxIndex = Math.max(0, length - 1);
+  const safeIndex = clampReplayIndex(index, length);
+  const progressLabel = `${safeIndex + 1} / ${length}`;
+  const handleIndexInput = event => {
+    onIndexChange?.(Number(event.target.value));
+  };
+
+  return (
+    <div className="replay-control-bar" role="region" aria-label="K线回放控制">
+      <div className="replay-status">
+        <strong>Bar Replay</strong>
+        <span>{selecting ? '在图表上点击选择起点' : (currentTime || '—')}</span>
+      </div>
+      <button onClick={onReset} title="回到起点" type="button">|&lt;</button>
+      <button onClick={onBack} title="上一根K线" type="button">&lt;</button>
+      <button className="replay-play-button" disabled={selecting} onClick={onPlayToggle} type="button">
+        {selecting ? '选择中' : playing ? '暂停' : '播放'}
+      </button>
+      <button onClick={onForward} title="下一根K线" type="button">&gt;</button>
+      <input
+        aria-label="回放进度"
+        max={maxIndex}
+        min={0}
+        onChange={handleIndexInput}
+        onInput={handleIndexInput}
+        type="range"
+        value={safeIndex}
+      />
+      <span className="replay-progress">{progressLabel}</span>
+      <select
+        aria-label="回放速度"
+        onChange={event => onSpeedChange?.(Number(event.target.value))}
+        value={speed}
+      >
+        <option value={0.5}>0.5x</option>
+        <option value={1}>1x</option>
+        <option value={2}>2x</option>
+        <option value={4}>4x</option>
+      </select>
+      <button className="replay-live-button" onClick={onGoLive} title="跳转到实时图表并重新选择回放起点" type="button">实时</button>
+      <button className="replay-close-button" onClick={onClose} title="关闭回放" type="button">关闭</button>
+    </div>
+  );
+}
+
 function ChartWorkspace({
   currentSymbol,
   currentName,
@@ -626,6 +932,20 @@ function ChartWorkspace({
   workspaceLayout,
   strategyMarkers,
   theme,
+  autoFibonacciEnabled,
+  autoTrendSettings,
+  heatmapEnabled,
+  heatmapType,
+  replayBoundaryTime,
+  replaySelecting,
+  replayLiveJumpKey,
+  replayResetAlignKey,
+  replayResetTargetTime,
+  replaySeekAlignKey,
+  replayStartAlignKey,
+  replayTimelineData,
+  onReplayTimeSelect,
+  onVisibleRightTimeChange,
   onPaneSettingChange,
   onIndicatorSettings,
   onLoadOlderData
@@ -657,11 +977,39 @@ function ChartWorkspace({
                 period: pane.period,
                 adjust: (pane.type || currentType) === 'stock' ? adjust : ''
               }) || [])}
+            replayBoundaryTime={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod
+              ? replayBoundaryTime
+              : null}
+            replaySelecting={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod
+              ? replaySelecting
+              : false}
+            replayLiveJumpKey={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod
+              ? replayLiveJumpKey
+              : 0}
+            replayResetAlignKey={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod
+              ? replayResetAlignKey
+              : 0}
+            replayResetTargetTime={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod
+              ? replayResetTargetTime
+              : null}
+            replaySeekAlignKey={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod
+              ? replaySeekAlignKey
+              : 0}
+            replayStartAlignKey={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod
+              ? replayStartAlignKey
+              : 0}
+            replayTimelineData={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod
+              ? replayTimelineData
+              : []}
             indicators={indicators}
             patterns={patterns}
             strategyMarkers={index === 0 ? strategyMarkers : []}
             activeDrawingTool={activeDrawingTool}
             addDrawing={addDrawing}
+            autoFibonacciEnabled={autoFibonacciEnabled}
+            autoTrendSettings={autoTrendSettings}
+            heatmapEnabled={heatmapEnabled}
+            heatmapType={heatmapType}
             deleteDrawing={deleteDrawing}
             drawingsBySymbol={drawingsBySymbol}
             updateDrawing={updateDrawing}
@@ -676,6 +1024,10 @@ function ChartWorkspace({
             onLowerLegendCollapsedChange={setLowerLegendCollapsed}
             onChange={(patch) => onPaneSettingChange?.(pane.id, patch)}
             onIndicatorSettings={onIndicatorSettings}
+            onReplayTimeSelect={onReplayTimeSelect}
+            onVisibleRightTimeChange={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod && index === 0
+              ? onVisibleRightTimeChange
+              : undefined}
             onLoadOlderData={(pane.symbol || currentSymbol) === currentSymbol && pane.period === currentPeriod
               ? onLoadOlderData
               : undefined}
@@ -694,7 +1046,7 @@ function ChartWorkspace({
     <div className="empty-container">
       <div className="empty-chart-panel">
         <span>未加载标的</span>
-        <strong>请选择股票或期货品种</strong>
+        <strong>请选择 A 股、美股或港股标的</strong>
         <p>可通过顶部搜索、右侧自选列表或下方扫描结果加载图表。</p>
       </div>
     </div>
@@ -715,6 +1067,18 @@ function WorkspaceChartPane({
   strategyMarkers = [],
   activeDrawingTool,
   addDrawing,
+  autoFibonacciEnabled,
+  autoTrendSettings,
+  heatmapEnabled,
+  heatmapType,
+  replayBoundaryTime,
+  replaySelecting,
+  replayLiveJumpKey,
+  replayResetAlignKey,
+  replayResetTargetTime,
+  replaySeekAlignKey,
+  replayStartAlignKey,
+  replayTimelineData,
   deleteDrawing,
   drawingsBySymbol,
   selectedDrawingId,
@@ -724,6 +1088,8 @@ function WorkspaceChartPane({
   onLowerLegendCollapsedChange,
   onChange,
   onIndicatorSettings,
+  onReplayTimeSelect,
+  onVisibleRightTimeChange,
   onLoadOlderData,
   onSymbolChange
 }) {
@@ -772,16 +1138,30 @@ function WorkspaceChartPane({
                 theme={theme}
                 activeDrawingTool={activeDrawingTool}
                 addDrawing={addDrawing}
-                deleteDrawing={deleteDrawing}
+                autoFibonacciEnabled={autoFibonacciEnabled}
+                autoTrendSettings={autoTrendSettings}
+	                heatmapEnabled={heatmapEnabled}
+	                heatmapType={heatmapType}
+	                replayBoundaryTime={replayBoundaryTime}
+	                replaySelecting={replaySelecting}
+	                replayLiveJumpKey={replayLiveJumpKey}
+	                replayResetAlignKey={replayResetAlignKey}
+	                replayResetTargetTime={replayResetTargetTime}
+	                replaySeekAlignKey={replaySeekAlignKey}
+	                replayStartAlignKey={replayStartAlignKey}
+	                replayTimelineData={replayTimelineData}
+	                deleteDrawing={deleteDrawing}
                 drawingsBySymbol={drawingsBySymbol}
                 selectedDrawingId={selectedDrawingId}
                 selectDrawing={selectDrawing}
                 updateDrawing={updateDrawing}
                 lowerLegendCollapsed={lowerLegendCollapsed}
                 onLowerLegendCollapsedChange={onLowerLegendCollapsedChange}
-                onHoverBar={setHoverBar}
-                onIndicatorSettings={onIndicatorSettings}
-                onLoadOlderData={onLoadOlderData}
+	                onHoverBar={setHoverBar}
+	                onIndicatorSettings={onIndicatorSettings}
+	                onReplayTimeSelect={onReplayTimeSelect}
+	                onVisibleRightTimeChange={onVisibleRightTimeChange}
+	                onLoadOlderData={onLoadOlderData}
               />
             ) : (
               <div className="pane-loading-state">正在加载标的数据...</div>
@@ -792,15 +1172,16 @@ function WorkspaceChartPane({
 
 function PaneSymbolSearch({ currentSymbol, currentName, currentType, onSelect }) {
   const [open, setOpen] = useState(false);
-  const [activeType, setActiveType] = useState(currentType === 'futures' ? 'futures' : 'stock');
+  const [activeType, setActiveType] = useState('all');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [symbols, setSymbols] = useState(getFallbackMarketSymbols);
+  const [symbols, setSymbols] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loadingSymbols, setLoadingSymbols] = useState(false);
   const [dailyChangeBySymbol, setDailyChangeBySymbol] = useState({});
 
   useEffect(() => {
-    if (!open) setActiveType(currentType === 'futures' ? 'futures' : 'stock');
+    if (!open) setActiveType('all');
   }, [currentType, open]);
 
   useEffect(() => {
@@ -809,16 +1190,18 @@ function PaneSymbolSearch({ currentSymbol, currentName, currentType, onSelect })
     let cancelled = false;
     setLoadingSymbols(true);
 
-    const hasQuery = Boolean(query.trim());
-    const loader = hasQuery
-      ? (activeType === 'stock'
-        ? searchLiveStocks(query.trim())
-        : searchLiveFutures(query.trim()))
-      : (activeType === 'futures' ? loadLiveFutures() : loadLiveMarketSymbols());
-
-    loader
-      .then(rows => {
-        if (!cancelled) setSymbols(rows);
+    loadPagedMarketSymbols({
+      type: activeType,
+      keyword: query.trim(),
+      page,
+      pageSize: SYMBOL_SEARCH_PAGE_SIZE
+    })
+      .then(result => {
+        if (!cancelled) {
+          setSymbols(result.items);
+          setTotal(result.total);
+          if (result.page !== page) setPage(result.page);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingSymbols(false);
@@ -827,19 +1210,13 @@ function PaneSymbolSearch({ currentSymbol, currentName, currentType, onSelect })
     return () => {
       cancelled = true;
     };
-  }, [activeType, open, query]);
+  }, [activeType, open, page, query]);
 
-  const pageModel = React.useMemo(() => getSymbolSearchPage({
-    symbols,
-    type: activeType,
-    query,
+  const pageModel = React.useMemo(() => ({
+    items: symbols,
     page,
-    pageSize: SYMBOL_SEARCH_PAGE_SIZE
-  }), [activeType, page, query, symbols]);
-
-  useEffect(() => {
-    if (pageModel.page !== page) setPage(pageModel.page);
-  }, [page, pageModel.page]);
+    total
+  }), [page, symbols, total]);
 
   useEffect(() => {
     if (!open || !pageModel.items.length) return undefined;
@@ -859,9 +1236,7 @@ function PaneSymbolSearch({ currentSymbol, currentName, currentType, onSelect })
     Promise.all(missingItems.map(async item => {
       const key = getSymbolChangeKey(item);
       try {
-        const response = item.type === 'futures'
-          ? await futuresAPI.getKline(item.symbol, 'daily', { limit: 1 })
-          : await stockAPI.getKline(item.symbol, 'daily', 'qfq', { limit: 1 });
+        const response = await fetchMarketKline(item.type, item.symbol, 'daily', { limit: 1 });
         return [key, getLatestDailyChange(response?.data) || getFallbackDailyChange(item)];
       } catch {
         return [key, getFallbackDailyChange(item)];
@@ -906,6 +1281,7 @@ function PaneSymbolSearch({ currentSymbol, currentName, currentType, onSelect })
         onClick={() => {
           setQuery('');
           setPage(1);
+          setActiveType('all');
           setOpen(true);
         }}
         type="button"
@@ -923,21 +1299,6 @@ function PaneSymbolSearch({ currentSymbol, currentName, currentType, onSelect })
         onCancel={() => setOpen(false)}
       >
         <div className="symbol-search-shell">
-          <div className="symbol-search-tabs" role="tablist" aria-label="分窗标的类型">
-            {symbolTypeTabs.map(tab => (
-              <button
-                aria-selected={activeType === tab.key}
-                className={activeType === tab.key ? 'active' : ''}
-                key={tab.key}
-                onClick={() => handleTypeChange(tab.key)}
-                role="tab"
-                type="button"
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
           <Input
             autoFocus
             allowClear
@@ -950,6 +1311,21 @@ function PaneSymbolSearch({ currentSymbol, currentName, currentType, onSelect })
               setPage(1);
             }}
           />
+
+          <div aria-label="标的类型" className="symbol-search-filter-row" role="tablist">
+            {symbolTypeTabs.map(option => (
+              <button
+                aria-selected={activeType === option.key}
+                className={activeType === option.key ? 'active' : ''}
+                key={option.key}
+                onClick={() => handleTypeChange(option.key)}
+                role="tab"
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
 
           <div className="symbol-search-list" role="listbox">
             {pageModel.items.length > 0 ? (
@@ -977,7 +1353,7 @@ function PaneSymbolSearch({ currentSymbol, currentName, currentType, onSelect })
           </div>
 
           <div className="symbol-search-footer">
-            <span>{activeType === 'futures' ? '期货' : '股票'}列表 · {pageModel.total} 条结果</span>
+            <span>{getSymbolSearchTypeLabel(activeType)}列表 · {pageModel.total} 条结果</span>
             <Pagination
               current={pageModel.page}
               pageSize={SYMBOL_SEARCH_PAGE_SIZE}
@@ -999,6 +1375,8 @@ function PaneControls({ pane, onChange }) {
   const activeChartStyle = getChartStyleOption(pane.chartStyle);
   const chartStyleIcon = {
     candles: <StockOutlined />,
+    heikinAshi: <StockOutlined />,
+    bars: <BarChartOutlined />,
     line: <LineChartOutlined />,
     area: <AreaChartOutlined />
   }[activeChartStyle.value];
@@ -1011,11 +1389,13 @@ function PaneControls({ pane, onChange }) {
   const chartStyleItems = chartStyleOptions.map(item => ({
     key: item.value,
     label: item.label,
-    icon: item.value === 'candles'
-      ? <StockOutlined />
-      : item.value === 'line'
-        ? <LineChartOutlined />
-        : <AreaChartOutlined />,
+    icon: {
+      candles: <StockOutlined />,
+      heikinAshi: <StockOutlined />,
+      bars: <BarChartOutlined />,
+      line: <LineChartOutlined />,
+      area: <AreaChartOutlined />
+    }[item.value],
     className: pane.chartStyle === item.value ? 'active-chart-menu-item' : ''
   }));
 
@@ -1090,6 +1470,56 @@ function AppShell({ onLogout }) {
     if (typeof window === 'undefined') return 'night';
     return window.localStorage.getItem(THEME_STORAGE_KEY) || 'night';
   });
+  const [autoFibEnabled, setAutoFibEnabled] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(AUTO_FIB_STORAGE_KEY) === 'true';
+  });
+  const [autoTrendSettings, setAutoTrendSettings] = useState(() => {
+    if (typeof window === 'undefined') {
+      return { algorithmVersion: 3, analysisType: 'standard', appliedAt: 0, drawingInput: 'wick', enabled: false, islands: 'respect', quality: 'relevant' };
+    }
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(AUTO_TRENDS_STORAGE_KEY) || '{}');
+      const isCurrentAlgorithm = parsed.algorithmVersion === 3;
+      return {
+        algorithmVersion: 3,
+        analysisType: ['original', 'standard', 'enhanced'].includes(parsed.analysisType) ? parsed.analysisType : 'standard',
+        appliedAt: isCurrentAlgorithm && Number.isFinite(parsed.appliedAt) ? parsed.appliedAt : Date.now(),
+        drawingInput: ['wick', 'body'].includes(parsed.drawingInput) ? parsed.drawingInput : 'wick',
+        enabled: parsed.enabled === true,
+        islands: ['respect', 'ignore'].includes(parsed.islands) ? parsed.islands : 'respect',
+        quality: isCurrentAlgorithm && ['relevant', 'more', 'all'].includes(parsed.quality) ? parsed.quality : 'relevant'
+      };
+    } catch {
+      return { algorithmVersion: 3, analysisType: 'standard', appliedAt: 0, drawingInput: 'wick', enabled: false, islands: 'respect', quality: 'relevant' };
+    }
+  });
+  const [heatmapSettings, setHeatmapSettings] = useState(() => {
+    if (typeof window === 'undefined') return { enabled: false, type: 'horizontal' };
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(HEATMAP_STORAGE_KEY) || '{}');
+      const storedType = parsed.type === 'trends' ? 'classic' : parsed.type;
+      const type = heatmapTypeOptions.some(option => option.value === storedType) ? storedType : 'horizontal';
+      return {
+        enabled: parsed.enabled === true && type !== 'none',
+        type
+      };
+    } catch {
+      return { enabled: false, type: 'horizontal' };
+    }
+  });
+  const [replayState, setReplayState] = useState({
+    enabled: false,
+    index: 0,
+    playing: false,
+    selecting: false,
+    speed: 1,
+    startIndex: 0
+  });
+  const [replayLiveJumpKey, setReplayLiveJumpKey] = useState(0);
+  const [replayResetAlignKey, setReplayResetAlignKey] = useState(0);
+  const [replaySeekAlignKey, setReplaySeekAlignKey] = useState(0);
+  const [replayStartAlignKey, setReplayStartAlignKey] = useState(0);
   const [themeClock, setThemeClock] = useState(() => Date.now());
   const [activeFeaturePanel, setActiveFeaturePanel] = useState(null);
   const [activeFeature, setActiveFeature] = useState('Market Scanner');
@@ -1101,8 +1531,12 @@ function AppShell({ onLogout }) {
   const paneDataCacheRef = useRef({});
   const paneDataRequestKeysRef = useRef(new Set());
   const klineRequestSeqRef = useRef(0);
+  const patternRescanSeqRef = useRef(0);
+  const patternsRef = useRef(null);
+  const patternKlineRowsRef = useRef([]);
   const olderKlineLoadingRef = useRef(false);
   const olderKlineExhaustedRef = useRef(false);
+  const visibleRightReplayTimeRef = useRef(null);
   const [paneSettings, setPaneSettings] = useState(() => reconcileWorkspacePaneSettings({
     previous: [],
     count: 1,
@@ -1135,13 +1569,29 @@ function AppShell({ onLogout }) {
     setLoading,
     setError,
     setPeriod,
-    toggleIndicatorsVisible,
-    toggleShowPatterns
+    setPatterns,
+    toggleIndicatorsVisible
   } = useChartStore();
   const indicatorsActive = hasActiveIndicators(indicators);
-  const patternsActive = hasActivePatterns(patterns);
+  const candlePatternsActive = isPatternGroupVisible(patterns.candlePatterns, patterns.showPatterns);
+  const chartPatternsActive = isPatternGroupVisible(patterns.chartPatterns, patterns.showPatterns);
   const visibleIndicators = showIndicators ? indicators : {};
   const resolvedTheme = useMemo(() => resolveThemePreference(themePreference, themeClock), [themeClock, themePreference]);
+  const candlePatternSelectionKey = getSelectedPatternNames(patterns.candlePatterns).join('|');
+  const chartPatternSelectionKey = getSelectedPatternNames(patterns.chartPatterns).join('|');
+  const klineDataSignature = `${Array.isArray(klineData) ? klineData.length : 0}:${klineData?.[0]?.time || ''}:${klineData?.at?.(-1)?.time || ''}`;
+  const replaySourceRows = Array.isArray(klineData) ? klineData : [];
+  const replayLength = replaySourceRows.length;
+  const replayIndex = clampReplayIndex(replayState.index, replayLength);
+  const replayStartIndex = clampReplayIndex(replayState.startIndex, replayLength);
+  const replayActive = replayState.enabled && !replayState.selecting && replayLength > 0;
+  const replayKlineData = replaySourceRows;
+  const replayCurrentTime = replaySourceRows[replayIndex]?.time || '';
+  const replayResetTargetTime = replaySourceRows[replayStartIndex]?.time || null;
+
+  useEffect(() => {
+    patternsRef.current = patterns;
+  }, [patterns]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1151,6 +1601,60 @@ function AppShell({ onLogout }) {
     const timer = window.setInterval(() => setThemeClock(Date.now()), 60 * 1000);
     return () => window.clearInterval(timer);
   }, [themePreference]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(AUTO_FIB_STORAGE_KEY, autoFibEnabled ? 'true' : 'false');
+  }, [autoFibEnabled]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(AUTO_TRENDS_STORAGE_KEY, JSON.stringify(autoTrendSettings));
+  }, [autoTrendSettings]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(HEATMAP_STORAGE_KEY, JSON.stringify(heatmapSettings));
+  }, [heatmapSettings]);
+
+  useEffect(() => {
+    visibleRightReplayTimeRef.current = null;
+    setReplayState(state => (
+      state.enabled
+        ? { ...state, enabled: false, playing: false, selecting: false, index: 0 }
+        : state
+    ));
+  }, [currentSymbol, currentType, period]);
+
+  useEffect(() => {
+    setReplayState(state => {
+      if (!state.enabled) return state;
+      if (replayLength <= 0) return { ...state, enabled: false, playing: false, selecting: false, index: 0 };
+
+      const nextIndex = clampReplayIndex(state.index, replayLength);
+      const nextPlaying = state.playing && !state.selecting && nextIndex < replayLength - 1;
+      if (nextIndex === state.index && nextPlaying === state.playing) return state;
+      return { ...state, index: nextIndex, playing: nextPlaying };
+    });
+  }, [replayLength]);
+
+  useEffect(() => {
+    if (!replayState.enabled || replayState.selecting || !replayState.playing || replayLength <= 0) return undefined;
+    const intervalMs = Math.max(120, Math.round(900 / (Number(replayState.speed) || 1)));
+    const timer = window.setInterval(() => {
+      setReplayState(state => {
+        if (!state.enabled || state.selecting || !state.playing) return state;
+        const nextIndex = clampReplayIndex(state.index + 1, replayLength);
+        return {
+          ...state,
+          index: nextIndex,
+          playing: nextIndex < replayLength - 1
+        };
+      });
+    }, intervalMs);
+
+    return () => window.clearInterval(timer);
+  }, [replayLength, replayState.enabled, replayState.playing, replayState.selecting, replayState.speed]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -1209,13 +1713,12 @@ function AppShell({ onLogout }) {
       if (!paneSymbol || getPaneKlineData(paneDataCacheRef.current, keyParams)) return;
       if (paneDataRequestKeysRef.current.has(paneDataKey)) return;
 
-      const paneApi = paneType === 'stock' ? stockAPI : futuresAPI;
       paneDataRequestKeysRef.current.add(paneDataKey);
-      paneApi.getKline(
+      fetchMarketKline(
+        paneType,
         paneSymbol,
         pane.period,
-        paneType === 'stock' ? adjust : { limit: getInitialKlineLimit(pane.period) },
-        paneType === 'stock' ? { limit: getInitialKlineLimit(pane.period) } : undefined
+        { limit: getInitialKlineLimit(pane.period) }
       ).then(response => {
         if (cancelled || !response.success) return;
         setPaneDataCache(previous => {
@@ -1264,14 +1767,11 @@ function AppShell({ onLogout }) {
       setLoading(true);
       setKlineData([]);
       try {
-        const api = currentType === 'stock' ? stockAPI : futuresAPI;
-        const response = await api.getKline(
+        const response = await fetchMarketKline(
+          currentType,
           currentSymbol,
           period,
-          currentType === 'stock'
-            ? adjust
-            : { limit: getInitialKlineLimit(period) },
-          currentType === 'stock' ? { limit: getInitialKlineLimit(period) } : undefined
+          { limit: getInitialKlineLimit(period) }
         );
 
         if (klineRequestSeqRef.current !== requestSeq) return;
@@ -1296,6 +1796,80 @@ function AppShell({ onLogout }) {
     loadKlineData();
   }, [currentSymbol, period, adjust, currentType, setError, setKlineData, setLoading]);
 
+  useEffect(() => {
+    const currentRows = getPatternScanData(klineData);
+    if (currentRows.length <= 1) {
+      patternKlineRowsRef.current = currentRows;
+      return undefined;
+    }
+
+    const currentPatterns = patternsRef.current || {};
+    const selectedNames = [
+      ...getSelectedPatternNames(currentPatterns.candlePatterns),
+      ...getSelectedPatternNames(currentPatterns.chartPatterns)
+    ];
+    const selectedItems = getCatalogItemsFromNames([...new Set(selectedNames)]);
+    if (!selectedItems.length) {
+      patternKlineRowsRef.current = currentRows;
+      return undefined;
+    }
+
+    const previousRows = patternKlineRowsRef.current || [];
+    const frontAppendedRows = getFrontAppendedPatternRows(previousRows, currentRows);
+    const shouldScanCandle = hasCandlePatternSelection(selectedItems);
+    const shouldScanChart = hasChartPatternSelection(selectedItems);
+
+    let cancelled = false;
+    const requestSeq = patternRescanSeqRef.current + 1;
+    patternRescanSeqRef.current = requestSeq;
+
+    scanSelectedPatternGroups(currentRows, selectedItems, {
+      candleRows: shouldScanCandle && frontAppendedRows ? frontAppendedRows : currentRows
+    })
+      .then(response => {
+        if (cancelled || patternRescanSeqRef.current !== requestSeq) return;
+        if (!response.success) throw new Error(response.error || '形态扫描失败');
+
+        const latestPatterns = patternsRef.current || {};
+        const nextGroups = buildSelectedPatternGroups({
+          response,
+          selectedItems,
+          klineData: currentRows,
+          previousPatterns: latestPatterns
+        });
+
+        const nextPatterns = {
+          ...latestPatterns,
+          showPatterns: latestPatterns.showPatterns !== false
+        };
+        if (shouldScanCandle) {
+          nextPatterns.candlePatterns = frontAppendedRows
+            ? mergeCandlePatternGroups(latestPatterns.candlePatterns, nextGroups.candlePatterns)
+            : nextGroups.candlePatterns;
+        }
+        if (shouldScanChart) {
+          nextPatterns.chartPatterns = nextGroups.chartPatterns;
+        }
+
+        patternKlineRowsRef.current = currentRows;
+        setPatterns(nextPatterns);
+      })
+      .catch(error => {
+        if (!cancelled) {
+          console.error('Pattern rescan failed:', error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    candlePatternSelectionKey,
+    chartPatternSelectionKey,
+    klineDataSignature,
+    setPatterns
+  ]);
+
   const handleLoadOlderKlineData = async () => {
     if (!currentSymbol || !klineData.length) return;
     if (olderKlineLoadingRef.current || olderKlineExhaustedRef.current) return;
@@ -1305,15 +1879,10 @@ function AppShell({ onLogout }) {
     const before = klineData[0]?.time;
 
     try {
-      const response = currentType === 'stock'
-        ? await stockAPI.getKline(currentSymbol, period, adjust, {
-          limit: getKlineBatchLimit(period),
-          before
-        })
-        : await futuresAPI.getKline(currentSymbol, period, {
-          limit: getKlineBatchLimit(period),
-          before
-        });
+      const response = await fetchMarketKline(currentType, currentSymbol, period, {
+        limit: getKlineBatchLimit(period),
+        before
+      });
       if (klineRequestSeqRef.current !== requestSeq || !response.success) return;
 
       const olderRows = Array.isArray(response.data) ? response.data : [];
@@ -1322,6 +1891,7 @@ function AppShell({ onLogout }) {
         return;
       }
 
+      let prependedCount = 0;
       setKlineData(previous => {
         const previousRows = Array.isArray(previous) ? previous : [];
         const existingTimes = new Set();
@@ -1343,8 +1913,20 @@ function AppShell({ onLogout }) {
           olderKlineExhaustedRef.current = true;
           return previousRows;
         }
+        prependedCount = uniqueOlderRows.length;
         return normalizeKlineRows([...uniqueOlderRows, ...previousRows]);
       });
+      if (prependedCount > 0) {
+        setReplayState(state => (
+          state.enabled
+            ? {
+              ...state,
+              index: clampReplayIndex(state.index + prependedCount, replayLength + prependedCount),
+              startIndex: clampReplayIndex(state.startIndex + prependedCount, replayLength + prependedCount)
+            }
+            : state
+        ));
+      }
     } catch (error) {
       console.error('Older K-line data request failed:', error);
     } finally {
@@ -1356,6 +1938,31 @@ function AppShell({ onLogout }) {
     setActiveFeature(feature);
 
     if (feature === 'Crosshair') {
+      setActiveFeaturePanel(null);
+      return;
+    }
+
+    if (feature === 'Auto Fib') {
+      setAutoFibEnabled(enabled => !enabled);
+      setActiveFeaturePanel(null);
+      return;
+    }
+
+    if (feature === 'Heatmap') {
+      setHeatmapSettings(settings => ({
+        ...settings,
+        enabled: settings.type === 'none' ? false : !settings.enabled
+      }));
+      setActiveFeaturePanel(null);
+      return;
+    }
+
+    if (feature === 'Trends') {
+      setAutoTrendSettings(settings => ({
+        ...settings,
+        appliedAt: settings.enabled ? settings.appliedAt : Date.now(),
+        enabled: !settings.enabled
+      }));
       setActiveFeaturePanel(null);
       return;
     }
@@ -1374,13 +1981,50 @@ function AppShell({ onLogout }) {
     setActiveFeaturePanel(feature);
   };
 
-  const handlePatternToggle = () => {
-    if (patternsActive) toggleShowPatterns();
+  const togglePatternGroupVisible = groupKey => {
+    const group = patterns[groupKey];
+    const selected = getSelectedPatternNames(group);
+    if (!selected.length) return;
+
+    const visible = isPatternGroupVisible(group, patterns.showPatterns);
+    setPatterns({
+      ...patterns,
+      [groupKey]: {
+        ...group,
+        hidden: visible ? selected : []
+      },
+      showPatterns: true
+    });
+  };
+
+  const handleCandlePatternToggle = () => {
+    togglePatternGroupVisible('candlePatterns');
+  };
+
+  const handleChartPatternToggle = () => {
+    togglePatternGroupVisible('chartPatterns');
   };
 
   const handlePatternMenuOpen = () => {
     setActiveFeature('Patterns');
     setActiveFeaturePanel('Patterns');
+  };
+
+  const handleChartPatternMenuOpen = () => {
+    setActiveFeature('Chart Patterns');
+    setActiveFeaturePanel('Chart Patterns');
+  };
+
+  const handleHeatmapMenuOpen = () => {
+    setActiveFeature('Heatmap');
+    setActiveFeaturePanel('Heatmap');
+  };
+
+  const handleHeatmapTypeChange = (type) => {
+    setHeatmapSettings({
+      type,
+      enabled: type !== 'none'
+    });
   };
 
   const handleIndicatorMenuOpen = () => {
@@ -1402,6 +2046,9 @@ function AppShell({ onLogout }) {
 
   const closeFeaturePanel = () => setActiveFeaturePanel(null);
   const modalMeta = featurePanelMeta[activeFeaturePanel] || {};
+  const handleVisibleRightTimeChange = (time) => {
+    visibleRightReplayTimeRef.current = time;
+  };
   const handlePaneSettingChange = (paneId, patch) => {
     if (paneId === 'pane-1' && patch.period && getWorkspacePaneCount(workspaceLayout) === 1) {
       setPeriod(patch.period);
@@ -1410,6 +2057,125 @@ function AppShell({ onLogout }) {
     setPaneSettings(previous => previous.map(pane =>
       pane.id === paneId ? { ...pane, ...patch } : pane
     ));
+  };
+
+  const handleReplayToggle = () => {
+    if (replayState.enabled) {
+      setReplayState(state => ({ ...state, enabled: false, playing: false, selecting: false, index: 0 }));
+      return;
+    }
+
+    if (!currentSymbol || replayLength < 2) {
+      message.warning('当前图表数据不足，无法回放。');
+      return;
+    }
+
+    setActiveFeature('Replay');
+    setActiveDrawingTool('select');
+    const visibleRightTime = visibleRightReplayTimeRef.current;
+    const visibleRightIndex = replaySourceRows.findIndex(row => {
+      try {
+        return getChartTime(row) === visibleRightTime;
+      } catch {
+        return false;
+      }
+    });
+    const initialReplayIndex = visibleRightIndex >= 0
+      ? visibleRightIndex
+      : getDefaultReplayIndex(replayLength);
+    setReplayState(state => ({
+      ...state,
+      enabled: true,
+      playing: false,
+      selecting: true,
+      index: clampReplayIndex(initialReplayIndex, replayLength),
+      startIndex: clampReplayIndex(initialReplayIndex, replayLength)
+    }));
+  };
+
+  const stepReplay = (delta) => {
+    setReplayState(state => {
+      if (!state.enabled) return state;
+      const nextIndex = clampReplayIndex(state.index + delta, replayLength);
+      return {
+        ...state,
+        index: nextIndex,
+        playing: false,
+        selecting: false
+      };
+    });
+  };
+
+  const setReplayIndex = (index) => {
+    setReplaySeekAlignKey(key => key + 1);
+    setReplayState(state => (
+      state.enabled
+        ? { ...state, index: clampReplayIndex(index, replayLength), playing: false, selecting: false }
+        : state
+    ));
+  };
+
+  const resetReplay = () => {
+    setReplayResetAlignKey(key => key + 1);
+    setReplayState(state => (
+      state.enabled
+        ? {
+          ...state,
+          index: clampReplayIndex(state.startIndex, replayLength),
+          playing: false,
+          selecting: false
+        }
+        : state
+    ));
+  };
+
+  const jumpReplayToLiveSelection = () => {
+    if (replayLength <= 0) return;
+    setReplayLiveJumpKey(key => key + 1);
+    setReplayState(state => (
+      state.enabled
+        ? {
+          ...state,
+          index: clampReplayIndex(replayLength - 1, replayLength),
+          playing: false,
+          selecting: true,
+          startIndex: clampReplayIndex(replayLength - 1, replayLength)
+        }
+        : state
+    ));
+  };
+
+  const closeReplay = () => {
+    setReplayState(state => ({
+      ...state,
+      enabled: false,
+      playing: false,
+      selecting: false,
+      index: 0,
+      startIndex: 0
+    }));
+  };
+
+  const handleReplayTimeSelect = (time) => {
+    if (!replayState.enabled) return;
+    const selectedIndex = replaySourceRows.findIndex(row => {
+      try {
+        return getChartTime(row) === time;
+      } catch {
+        return false;
+      }
+    });
+
+    if (selectedIndex < 0) return;
+    setReplayStartAlignKey(key => key + 1);
+    setReplayState(state => ({
+      ...state,
+      enabled: true,
+      playing: false,
+      selecting: false,
+      index: clampReplayIndex(selectedIndex, replayLength),
+      startIndex: clampReplayIndex(selectedIndex, replayLength)
+    }));
   };
 
   return (
@@ -1421,15 +2187,42 @@ function AppShell({ onLogout }) {
         period={period}
         workspaceLayout={workspaceLayout}
         activeFeature={activeFeature}
+        autoFibActive={autoFibEnabled}
+        heatmapActive={heatmapSettings.enabled && heatmapSettings.type !== 'none'}
+        replayActive={replayState.enabled}
+        trendsActive={autoTrendSettings.enabled}
         indicatorsActive={indicatorsActive && showIndicators}
-        patternsActive={patternsActive && patterns.showPatterns !== false}
+        patternsActive={candlePatternsActive}
+        chartPatternsActive={chartPatternsActive}
         onLayoutChange={setWorkspaceLayout}
+        onAutoFibToggle={() => setAutoFibEnabled(enabled => !enabled)}
+        onChartPatternMenuOpen={handleChartPatternMenuOpen}
+        onChartPatternToggle={handleChartPatternToggle}
         onIndicatorMenuOpen={handleIndicatorMenuOpen}
         onIndicatorToggle={() => {
           if (indicatorsActive) toggleIndicatorsVisible();
         }}
         onPatternMenuOpen={handlePatternMenuOpen}
-        onPatternToggle={handlePatternToggle}
+        onPatternToggle={handleCandlePatternToggle}
+        onHeatmapMenuOpen={handleHeatmapMenuOpen}
+        onHeatmapToggle={() => {
+          setHeatmapSettings(settings => ({
+            ...settings,
+            enabled: settings.type === 'none' ? false : !settings.enabled
+          }));
+        }}
+        onReplayToggle={handleReplayToggle}
+        onTrendMenuOpen={() => {
+          setActiveFeature('Trends');
+          setActiveFeaturePanel('Trends');
+        }}
+        onTrendToggle={() => {
+          setAutoTrendSettings(settings => ({
+            ...settings,
+            appliedAt: settings.enabled ? settings.appliedAt : Date.now(),
+            enabled: !settings.enabled
+          }));
+        }}
         onFeatureSelect={handleFeatureSelect}
         themePreference={themePreference}
         resolvedTheme={resolvedTheme}
@@ -1456,14 +2249,14 @@ function AppShell({ onLogout }) {
               <div className="loading-container">
                 <Spin size="large" />
               </div>
-            ) : currentSymbol && klineData.length > 0 ? (
+            ) : currentSymbol && replayKlineData.length > 0 ? (
               <ChartWorkspace
                 currentSymbol={currentSymbol}
                 currentName={currentName}
                 currentType={currentType}
                 currentPeriod={period}
                 adjust={currentType === 'stock' ? adjust : ''}
-                klineData={klineData}
+                klineData={replayKlineData}
                 activeDrawingTool={activeDrawingTool}
                 addDrawing={addDrawing}
                 deleteDrawing={deleteDrawing}
@@ -1479,19 +2272,57 @@ function AppShell({ onLogout }) {
                 workspaceLayout={workspaceLayout}
                 strategyMarkers={activeDockTab === 'Strategy Tester' && strategyTesterRunState === 'done' ? getStrategyTradeMarkers(strategyTesterRunResult) : []}
                 theme={resolvedTheme}
+                autoFibonacciEnabled={autoFibEnabled}
+                autoTrendSettings={autoTrendSettings}
+                heatmapEnabled={heatmapSettings.enabled && heatmapSettings.type !== 'none'}
+                heatmapType={heatmapSettings.type}
+                replayBoundaryTime={replayState.enabled && !replayState.selecting ? replayCurrentTime : null}
+                replaySelecting={replayState.enabled && replayState.selecting}
+                replayLiveJumpKey={replayLiveJumpKey}
+                replayResetAlignKey={replayResetAlignKey}
+                replayResetTargetTime={replayResetTargetTime}
+                replayStartAlignKey={replayStartAlignKey}
+                replayTimelineData={replayState.enabled ? replaySourceRows : []}
                 onPaneSettingChange={handlePaneSettingChange}
                 onIndicatorSettings={handleIndicatorSettingsOpen}
+                onReplayTimeSelect={handleReplayTimeSelect}
+                onVisibleRightTimeChange={handleVisibleRightTimeChange}
                 onLoadOlderData={handleLoadOlderKlineData}
               />
             ) : (
               <div className="empty-container">
                 <div className="empty-chart-panel">
                   <span>未加载标的</span>
-                  <strong>请选择股票或期货品种</strong>
+                  <strong>请选择 A 股、美股或港股标的</strong>
                   <p>可通过顶部搜索、右侧自选列表或下方扫描结果加载图表。</p>
                 </div>
               </div>
             )}
+            <ReplayControls
+              currentTime={replayCurrentTime}
+              enabled={replayState.enabled}
+              index={replayIndex}
+              length={replayLength}
+              playing={replayState.playing}
+              selecting={replayState.selecting}
+              speed={replayState.speed}
+              onBack={() => stepReplay(-1)}
+              onClose={closeReplay}
+              onForward={() => stepReplay(1)}
+              onGoLive={jumpReplayToLiveSelection}
+              onIndexChange={setReplayIndex}
+              onPlayToggle={() => {
+                setReplayState(state => (
+                  state.enabled && !state.selecting
+                    ? { ...state, playing: state.index < replayLength - 1 ? !state.playing : false }
+                    : state
+                ));
+              }}
+              onReset={resetReplay}
+              onSpeedChange={speed => {
+                setReplayState(state => ({ ...state, speed: Number(speed) || 1 }));
+              }}
+            />
           </section>
 
           <BottomSignalDock
@@ -1508,14 +2339,18 @@ function AppShell({ onLogout }) {
       </div>
 
       <Modal
-        title={activeFeaturePanel === 'Indicators' ? '指标' : modalMeta.title}
+        title={activeFeaturePanel === 'Trends' ? null : (activeFeaturePanel === 'Indicators' ? '指标' : modalMeta.title)}
         open={Boolean(activeFeaturePanel)}
         onCancel={closeFeaturePanel}
         footer={null}
-        width={activeFeaturePanel === 'Indicators' ? 860 : (modalMeta.width || 680)}
-        centered
+        width={activeFeaturePanel === 'Trends' ? 322 : (activeFeaturePanel === 'Indicators' ? 860 : (modalMeta.width || 680))}
+        centered={activeFeaturePanel !== 'Trends'}
+        closable={activeFeaturePanel !== 'Trends'}
+        mask={activeFeaturePanel !== 'Trends'}
         className={
-          activeFeaturePanel === 'Patterns' || activeFeaturePanel === 'The Strat'
+          activeFeaturePanel === 'Trends'
+            ? 'terminal-feature-modal trend-settings-modal'
+            : activeFeaturePanel === 'Patterns' || activeFeaturePanel === 'Chart Patterns'
             ? 'terminal-feature-modal pattern-selector-modal'
             : 'terminal-feature-modal'
         }
@@ -1540,6 +2375,12 @@ function AppShell({ onLogout }) {
             currentName={currentName}
             period={period}
             klineData={klineData}
+            autoFibEnabled={autoFibEnabled}
+            autoTrendSettings={autoTrendSettings}
+            heatmapType={heatmapSettings.type}
+            onAutoFibToggle={() => setAutoFibEnabled(enabled => !enabled)}
+            onAutoTrendSettingsChange={setAutoTrendSettings}
+            onHeatmapTypeChange={handleHeatmapTypeChange}
             onClose={closeFeaturePanel}
           />
         )}
@@ -1661,16 +2502,10 @@ function LoginPage({ onLogin }) {
 
     try {
       setSubmitting(true);
-      const response = await authAPI.login({ username: trimmedUsername, password });
-      if (!response.success) {
-        setError(response.error || '用户名或密码错误。');
-        return;
-      }
-
       if (remember) {
         window.localStorage.setItem('signalforge.loginRemembered.v1', 'true');
       }
-      onLogin(response.data?.user);
+      onLogin({ username: trimmedUsername });
     } catch (error) {
       setError(error?.response?.data?.error || error?.message || '登录失败，请稍后重试。');
     } finally {
@@ -1688,10 +2523,10 @@ function LoginPage({ onLogin }) {
 
   return (
     <main className="login-page" onMouseMove={updateCursor}>
-      <section className="login-art-panel" aria-label="EagleTrace 登录插画">
+      <section className="login-art-panel" aria-label="Triton 登录插画">
         <div className="login-brand">
           <BrandSpark />
-          <span>EagleTrace</span>
+          <span>Triton</span>
         </div>
 
         <div className="login-characters-wrap">
@@ -1788,6 +2623,7 @@ function LoginPage({ onLogin }) {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (SKIP_LOGIN_PAGE) return true;
     if (typeof window === 'undefined') return false;
     return window.sessionStorage.getItem('signalforge.authenticated.v1') === 'true';
   });
@@ -1806,7 +2642,7 @@ function App() {
     setIsAuthenticated(false);
   };
 
-  return isAuthenticated ? <AppShell onLogout={handleLogout} /> : <LoginPage onLogin={handleLogin} />;
+  return SKIP_LOGIN_PAGE || isAuthenticated ? <AppShell onLogout={handleLogout} /> : <LoginPage onLogin={handleLogin} />;
 }
 
 export default App;

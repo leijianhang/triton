@@ -7,12 +7,12 @@ export const getSymbolSearchPage = ({
   page = 1,
   pageSize = 10
 }) => {
-  const targetType = type === 'futures' ? 'futures' : 'stock';
+  const targetType = ['all', 'stock', 'us', 'hk'].includes(type) ? type : 'stock';
   const keyword = normalize(query);
   const safePageSize = Math.max(1, Number(pageSize) || 10);
 
   const filtered = symbols.filter(item => {
-    const matchesType = item.type === targetType;
+    const matchesType = targetType === 'all' || item.type === targetType;
     const matchesKeyword = !keyword ||
       normalize(item.symbol).includes(keyword) ||
       normalize(item.name).includes(keyword) ||

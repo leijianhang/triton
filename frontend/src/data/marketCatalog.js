@@ -3,113 +3,138 @@ export const marketSymbols = [
     symbol: '600519',
     name: '贵州茅台',
     type: 'stock',
-    market: 'A-Shares',
+    market: 'A股',
+    exchange: 'SSE',
+    industry: '白酒',
     last: '1680.00',
     change: '+2.18%',
     tone: 'up',
     score: 92,
-    setup: 'Trendline breakout + volume expansion',
-    time: '09:42',
-    timing: {
-      daily: { label: 'Daily Trend', value: 'Strong', score: 88, detail: 'Higher highs confirmed' },
-      hourly: { label: '60m Momentum', value: 'Turning Up', score: 82, detail: 'MACD slope rising' },
-      intraday: { label: '15m Pullback', value: 'Confirming', score: 69, detail: 'Support retest in progress' },
-      risk: { label: 'Risk / Reward', value: '2.4 : 1', score: 74, detail: 'Stop below last pivot' }
-    }
+    setup: 'Daily trend breakout + volume expansion',
+    time: '09:42'
   },
   {
     symbol: '000858',
     name: '五粮液',
     type: 'stock',
-    market: 'A-Shares',
+    market: 'A股',
+    exchange: 'SZSE',
+    industry: '白酒',
     last: '168.50',
     change: '+0.74%',
     tone: 'up',
     score: 84,
     setup: 'MA alignment on daily chart',
-    time: '09:58',
-    timing: {
-      daily: { label: 'Daily Trend', value: 'Constructive', score: 79, detail: 'Price holding above MA20' },
-      hourly: { label: '60m Momentum', value: 'Stable', score: 73, detail: 'Volume confirms pullback' },
-      intraday: { label: '15m Pullback', value: 'Neutral', score: 61, detail: 'Waiting for range break' },
-      risk: { label: 'Risk / Reward', value: '1.8 : 1', score: 67, detail: 'Stop below morning low' }
-    }
+    time: '09:58'
   },
   {
     symbol: '600036',
     name: '招商银行',
     type: 'stock',
-    market: 'A-Shares',
+    market: 'A股',
+    exchange: 'SSE',
+    industry: '银行',
     last: '34.20',
     change: '-0.42%',
     tone: 'down',
     score: 63,
     setup: 'Breadth lagging near MA20',
-    time: '10:02',
-    timing: {
-      daily: { label: 'Daily Trend', value: 'Sideways', score: 57, detail: 'Price testing MA20' },
-      hourly: { label: '60m Momentum', value: 'Soft', score: 49, detail: 'Lower highs forming' },
-      intraday: { label: '15m Pullback', value: 'Weak', score: 44, detail: 'Needs reversal volume' },
-      risk: { label: 'Risk / Reward', value: '1.2 : 1', score: 51, detail: 'Support not confirmed' }
-    }
+    time: '10:02'
   },
   {
-    symbol: 'CU2406',
-    name: '沪铜',
-    type: 'futures',
-    market: 'Futures',
-    last: '78620',
-    change: '+1.06%',
+    symbol: 'AAPL',
+    name: 'Apple Inc.',
+    type: 'us',
+    market: 'US',
+    exchange: 'NASDAQ',
+    industry: 'Technology',
+    last: '213.55',
+    change: '+0.82%',
     tone: 'up',
-    score: 81,
-    setup: 'Volatility rank moved above 80',
-    time: '10:09',
-    timing: {
-      daily: { label: 'Daily Trend', value: 'Strong', score: 84, detail: 'Commodity trend remains bid' },
-      hourly: { label: '60m Momentum', value: 'Expanding', score: 86, detail: 'Range expansion confirmed' },
-      intraday: { label: '15m Pullback', value: 'Shallow', score: 72, detail: 'Buyers defending VWAP' },
-      risk: { label: 'Risk / Reward', value: '2.1 : 1', score: 71, detail: 'Stop below last range base' }
-    }
+    score: 82,
+    setup: 'US large-cap momentum leader',
+    time: '09:45'
   },
   {
-    symbol: 'AU2406',
-    name: '沪金',
-    type: 'futures',
-    market: 'Futures',
-    last: '553.12',
-    change: '+1.44%',
+    symbol: 'MSFT',
+    name: 'Microsoft Corp.',
+    type: 'us',
+    market: 'US',
+    exchange: 'NASDAQ',
+    industry: 'Technology',
+    last: '447.67',
+    change: '+0.36%',
     tone: 'up',
-    score: 78,
-    setup: 'Volatility expansion setup',
-    time: '10:11',
-    timing: {
-      daily: { label: 'Daily Trend', value: 'Bullish', score: 80, detail: 'Breakout remains intact' },
-      hourly: { label: '60m Momentum', value: 'Rising', score: 77, detail: 'Momentum slope improving' },
-      intraday: { label: '15m Pullback', value: 'Orderly', score: 70, detail: 'Support retest holding' },
-      risk: { label: 'Risk / Reward', value: '1.9 : 1', score: 68, detail: 'Stop below breakout shelf' }
-    }
+    score: 80,
+    setup: 'Cloud and AI trend holding above support',
+    time: '09:46'
   },
   {
-    symbol: 'IF2405',
-    name: '沪深主力',
-    type: 'futures',
-    market: 'Futures',
-    last: '3542.6',
-    change: '+0.31%',
+    symbol: 'NVDA',
+    name: 'NVIDIA Corp.',
+    type: 'us',
+    market: 'US',
+    exchange: 'NASDAQ',
+    industry: 'Semiconductors',
+    last: '124.30',
+    change: '+1.41%',
     tone: 'up',
-    score: 76,
-    setup: 'Pullback into support zone',
-    time: '10:06',
-    timing: {
-      daily: { label: 'Daily Trend', value: 'Constructive', score: 76, detail: 'Index above rising support' },
-      hourly: { label: '60m Momentum', value: 'Recovering', score: 72, detail: 'MACD histogram improving' },
-      intraday: { label: '15m Pullback', value: 'Confirming', score: 66, detail: 'Buyers active near support' },
-      risk: { label: 'Risk / Reward', value: '1.7 : 1', score: 64, detail: 'Stop below support zone' }
-    }
+    score: 88,
+    setup: 'Semiconductor relative strength',
+    time: '09:47'
+  },
+  {
+    symbol: '0700.HK',
+    name: '腾讯控股',
+    type: 'hk',
+    market: '港股',
+    exchange: 'HKEX',
+    industry: '互联网',
+    last: '385.80',
+    change: '+0.51%',
+    tone: 'up',
+    score: 79,
+    setup: 'Hong Kong tech rebound setup',
+    time: '10:03'
+  },
+  {
+    symbol: '9988.HK',
+    name: '阿里巴巴-W',
+    type: 'hk',
+    market: '港股',
+    exchange: 'HKEX',
+    industry: '互联网',
+    last: '76.20',
+    change: '-0.26%',
+    tone: 'down',
+    score: 66,
+    setup: 'Range compression near resistance',
+    time: '10:04'
+  },
+  {
+    symbol: '3690.HK',
+    name: '美团-W',
+    type: 'hk',
+    market: '港股',
+    exchange: 'HKEX',
+    industry: '互联网',
+    last: '119.50',
+    change: '+1.18%',
+    tone: 'up',
+    score: 77,
+    setup: 'Consumer internet momentum improving',
+    time: '10:05'
   }
 ];
 
 const normalize = value => String(value || '').trim().toLowerCase();
+
+const getDefaultTiming = active => ({
+  daily: { label: 'Daily Trend', value: active.score >= 80 ? 'Strong' : 'Constructive', score: active.score, detail: 'Price structure and momentum are aligned' },
+  hourly: { label: '60m Momentum', value: active.score >= 75 ? 'Rising' : 'Neutral', score: Math.max(40, active.score - 6), detail: 'Intraday momentum context' },
+  intraday: { label: '15m Pullback', value: active.tone === 'down' ? 'Weak' : 'Confirming', score: Math.max(35, active.score - 14), detail: 'Short-term pullback status' },
+  risk: { label: 'Risk / Reward', value: active.score >= 80 ? '2.1 : 1' : '1.5 : 1', score: Math.max(35, active.score - 12), detail: 'Stop below recent pivot' }
+});
 
 export const findSymbol = (symbol) => {
   const target = normalize(symbol);
@@ -135,18 +160,12 @@ export const getScannerRows = (symbols = marketSymbols) => symbols
   .filter(item => item.score >= 70)
   .sort((a, b) => b.score - a.score);
 
-export const getWatchlistRows = (type, symbols = marketSymbols) => {
-  const targetType = type === 'futures' || type === 'Futures' ? 'futures' : 'stock';
-  return symbols.filter(item => item.type === targetType).slice(0, 3);
-};
+export const getWatchlistRows = (type, symbols = marketSymbols) =>
+  symbols.filter(item => item.type === type).slice(0, 3);
 
 export const getAlertRows = (symbol) => {
   const active = findSymbol(symbol) || marketSymbols[0];
-  const triggerPrice = active.symbol === '600519'
-    ? '1698.00'
-    : active.type === 'futures'
-      ? active.last
-      : active.last;
+  const triggerPrice = active.symbol === '600519' ? '1698.00' : active.last;
 
   return [
     {
@@ -164,7 +183,7 @@ export const getAlertRows = (symbol) => {
     {
       name: `${active.symbol} MA momentum confirmation`,
       type: 'Indicator Bot',
-      target: active.type === 'futures' ? '60m MACD' : 'Daily MA20',
+      target: active.type === 'us' ? '60m RSI' : 'Daily MA20',
       status: 'Waiting'
     }
   ];
@@ -172,7 +191,7 @@ export const getAlertRows = (symbol) => {
 
 export const getHappeningRows = (symbol) => {
   const active = findSymbol(symbol) || marketSymbols[0];
-  const sectorLabel = active.type === 'futures' ? active.name : `${active.name} group`;
+  const sectorLabel = active.type === 'stock' ? `${active.name} group` : active.name;
 
   return [
     {
@@ -199,12 +218,13 @@ export const getHappeningRows = (symbol) => {
 export const getStrategyRows = (symbol) => {
   const active = findSymbol(symbol) || marketSymbols[0];
   const baseProfit = active.score >= 85 ? '+18.4%' : active.score >= 75 ? '+12.7%' : '+4.6%';
+  const tradeCount = active.type === 'stock' ? 42 : 36;
 
   return [
     {
       symbol: active.symbol,
       name: `${active.symbol} Trendline Breakout`,
-      trades: active.type === 'futures' ? 38 : 42,
+      trades: tradeCount,
       winRate: active.score >= 80 ? '61.9%' : '56.8%',
       avg: active.score >= 80 ? '2.1R' : '1.5R',
       profit: baseProfit,
@@ -213,7 +233,7 @@ export const getStrategyRows = (symbol) => {
     {
       symbol: active.symbol,
       name: `${active.symbol} MA Pullback`,
-      trades: active.type === 'futures' ? 31 : 36,
+      trades: tradeCount - 6,
       winRate: active.score >= 80 ? '58.3%' : '52.6%',
       avg: '1.7R',
       profit: active.score >= 70 ? '+9.8%' : '+1.9%',
@@ -233,5 +253,5 @@ export const getStrategyRows = (symbol) => {
 
 export const getTimingRows = (symbol) => {
   const active = findSymbol(symbol) || marketSymbols[0];
-  return Object.values(active.timing);
+  return Object.values(active.timing || getDefaultTiming(active));
 };

@@ -157,6 +157,20 @@ export const getOverlayIndicatorLegendItems = (indicators = {}) => {
     });
   });
 
+  getIndicatorStates(indicators, 'gonogo').forEach(({ key, baseKey, instanceIndex, state }) => {
+    items.push({
+      key,
+      baseKey,
+      instanceIndex,
+      state,
+      name: 'GNG',
+      paramsLabel: '',
+      label: 'GNG',
+      colors: [],
+      visible: visibleFor(state)
+    });
+  });
+
   return items;
 };
 

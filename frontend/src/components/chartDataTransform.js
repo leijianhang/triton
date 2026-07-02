@@ -26,6 +26,35 @@ export function toCandleData(data) {
   }));
 }
 
+export function toHeikinAshiData(data) {
+  let previousOpen = null;
+  let previousClose = null;
+
+  return data.map(item => {
+    const open = Number(item.open);
+    const high = Number(item.high);
+    const low = Number(item.low);
+    const close = Number(item.close);
+    const heikinClose = (open + high + low + close) / 4;
+    const heikinOpen = previousOpen === null || previousClose === null
+      ? (open + close) / 2
+      : (previousOpen + previousClose) / 2;
+    const heikinHigh = Math.max(high, heikinOpen, heikinClose);
+    const heikinLow = Math.min(low, heikinOpen, heikinClose);
+
+    previousOpen = heikinOpen;
+    previousClose = heikinClose;
+
+    return {
+      time: normalizeChartTime(item.time),
+      open: heikinOpen,
+      high: heikinHigh,
+      low: heikinLow,
+      close: heikinClose,
+    };
+  });
+}
+
 export function toLineData(data) {
   return data.map(item => ({
     time: normalizeChartTime(item.time),

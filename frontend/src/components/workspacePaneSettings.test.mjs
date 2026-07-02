@@ -45,7 +45,7 @@ assert.equal(reconciled[2].id, 'pane-3');
 const reduced = reconcileWorkspacePaneSettings({
   previous: reconciled,
   count: 1,
-  defaults: { symbol: 'AU2406', name: '沪金', type: 'futures', period: 'weekly', chartStyle: 'area', showVolume: false }
+  defaults: { symbol: 'AAPL', name: 'Apple Inc.', type: 'us', period: 'weekly', chartStyle: 'area', showVolume: false }
 });
 
 assert.equal(reduced.length, 1);
@@ -53,16 +53,16 @@ assert.equal(reduced[0].id, 'pane-1');
 assert.equal(reduced[0].period, '60min');
 
 const synced = syncAllPaneSymbols(reconciled, {
-  symbol: 'AU2406',
-  name: '沪金',
-  type: 'futures'
+  symbol: 'AAPL',
+  name: 'Apple Inc.',
+  type: 'us'
 });
 
-assert.equal(synced[0].symbol, 'AU2406');
-assert.equal(synced[0].name, '沪金');
-assert.equal(synced[0].type, 'futures');
+assert.equal(synced[0].symbol, 'AAPL');
+assert.equal(synced[0].name, 'Apple Inc.');
+assert.equal(synced[0].type, 'us');
 assert.equal(synced[0].period, '60min');
-assert.equal(synced[1].symbol, 'AU2406');
-assert.equal(synced[2].symbol, 'AU2406');
+assert.equal(synced[1].symbol, 'AAPL');
+assert.equal(synced[2].symbol, 'AAPL');
 
 console.log('workspacePaneSettings tests passed');

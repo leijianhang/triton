@@ -1,3 +1,5 @@
+import { normalizeChartTime } from './chartDataTransform.js';
+
 const toPatternKey = value => String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
 
 const isHiddenPattern = (group, patternName, patternType) => {
@@ -17,15 +19,28 @@ const shouldRenderPattern = (group, patternName, patternType) => (
   isSelectedPattern(group, patternName, patternType) && !isHiddenPattern(group, patternName, patternType)
 );
 
-export const getPatternMarkers = (patterns = {}) => {
+const getMarkerTime = value => {
+  try {
+    return normalizeChartTime(value);
+  } catch {
+    return null;
+  }
+};
+
+const isWithinMaxTime = (time, maxTime) => maxTime === null || maxTime === undefined || time <= maxTime;
+
+export const getPatternMarkers = (patterns = {}, maxTime = null) => {
   const markers = [];
 
   patterns.candlePatterns?.patterns?.forEach(item => {
+    const time = getMarkerTime(item.time);
+    if (time === null || !isWithinMaxTime(time, maxTime)) return;
+
     item.patterns?.forEach(pattern => {
       if (!shouldRenderPattern(patterns.candlePatterns, pattern.name, pattern.type)) return;
       const signal = pattern.signal;
       markers.push({
-        time: item.time,
+        time,
         position: signal === 'bearish' ? 'aboveBar' : 'belowBar',
         color: signal === 'bearish' ? '#ff6b7a' : '#4ee093',
         shape: signal === 'bearish' ? 'arrowDown' : 'arrowUp',
@@ -34,52 +49,30 @@ export const getPatternMarkers = (patterns = {}) => {
     });
   });
 
-  patterns.chartPatterns?.patterns?.forEach(item => {
-    if (!shouldRenderPattern(patterns.chartPatterns, item.name, item.type)) return;
-    const signal = item.signal;
-    markers.push({
-      time: item.time,
-      position: signal === 'bearish' ? 'aboveBar' : 'belowBar',
-      color: signal === 'bearish' ? '#ff6b7a' : '#4ee093',
-      shape: signal === 'bearish' ? 'arrowDown' : 'arrowUp',
-      text: item.type || item.name || 'Chart'
-    });
-  });
-
-  patterns.theStratPatterns?.patterns?.forEach(item => {
-    if (!shouldRenderPattern(patterns.theStratPatterns, item.pattern?.name, item.pattern?.type)) return;
-    const signal = item.pattern?.signal;
-    markers.push({
-      time: item.time,
-      position: signal === 'bearish' ? 'aboveBar' : 'belowBar',
-      color: signal === 'bearish' ? '#ff6b7a' : '#4ee093',
-      shape: signal === 'bearish' ? 'arrowDown' : 'arrowUp',
-      text: item.pattern?.type || item.pattern?.name || 'TheStrat'
-    });
-  });
-
   return markers;
 };
 
-const countCandleMatches = (candlePatterns, selectedName) => {
+const countCandleMatches = (candlePatterns, selectedName, maxTime = null) => {
   const selectedKey = toPatternKey(selectedName);
   return (candlePatterns?.patterns || []).reduce((count, row) => (
-    count + (row.patterns || []).filter(pattern => (
-      toPatternKey(pattern.name) === selectedKey || toPatternKey(pattern.type) === selectedKey
-    )).length
+    count + (
+      isWithinMaxTime(getMarkerTime(row.time), maxTime)
+        ? (row.patterns || []).filter(pattern => (
+          toPatternKey(pattern.name) === selectedKey || toPatternKey(pattern.type) === selectedKey
+        )).length
+        : 0
+    )
   ), 0);
 };
 
-const countChartMatches = (chartPatterns, selectedName) => {
+const countChartMatches = (chartPatterns, selectedName, maxTime = null) => {
   const selectedKey = toPatternKey(selectedName);
-  return (chartPatterns?.patterns || []).filter(pattern => (
-    toPatternKey(pattern.name) === selectedKey || toPatternKey(pattern.type) === selectedKey
+  const patternList = Array.isArray(chartPatterns?.patterns) ? chartPatterns.patterns : [];
+  return patternList.filter(pattern => (
+    isWithinMaxTime(getMarkerTime(pattern.time), maxTime)
+    && (toPatternKey(pattern.name) === selectedKey || toPatternKey(pattern.type) === selectedKey)
   )).length;
 };
-
-const countTheStratMatches = (theStratPatterns, selectedName) => (
-  (theStratPatterns?.patterns || []).filter(item => item.pattern?.name === selectedName).length
-);
 
 const getSelectedLegendItems = ({ groupKey, groupName, group, selected = [], countMatches }) => (
   selected.map(name => ({
@@ -92,32 +85,24 @@ const getSelectedLegendItems = ({ groupKey, groupName, group, selected = [], cou
   }))
 );
 
-export const getPatternLegendItems = (patterns = {}) => [
+export const getPatternLegendItems = (patterns = {}, maxTime = null) => [
   ...getSelectedLegendItems({
     groupKey: 'candlestick',
-    groupName: 'Candlestick',
+    groupName: 'Candle Pattern',
     group: patterns.candlePatterns,
     selected: patterns.candlePatterns?.selected,
-    countMatches: name => countCandleMatches(patterns.candlePatterns, name)
+    countMatches: name => countCandleMatches(patterns.candlePatterns, name, maxTime)
   }),
   ...getSelectedLegendItems({
     groupKey: 'chart',
     groupName: 'Chart Pattern',
     group: patterns.chartPatterns,
     selected: patterns.chartPatterns?.selected,
-    countMatches: name => countChartMatches(patterns.chartPatterns, name)
-  }),
-  ...getSelectedLegendItems({
-    groupKey: 'thestrat',
-    groupName: 'TheStrat',
-    group: patterns.theStratPatterns,
-    selected: patterns.theStratPatterns?.selected,
-    countMatches: name => countTheStratMatches(patterns.theStratPatterns, name)
+    countMatches: name => countChartMatches(patterns.chartPatterns, name, maxTime)
   })
 ];
 
 export const hasActivePatterns = (patterns = {}) => (
   Boolean(patterns.candlePatterns?.selected?.length)
   || Boolean(patterns.chartPatterns?.selected?.length)
-  || Boolean(patterns.theStratPatterns?.selected?.length)
 );

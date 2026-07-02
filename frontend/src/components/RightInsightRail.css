@@ -1353,3 +1353,27 @@
   background: #e8f7ef;
   color: #198754;
 }
+
+.theme-night .rail-actions button {
+  height: 25px;
+  border-color: #444444;
+  border-radius: 3px;
+  background: #242424;
+  color: #ffbe4d;
+}
+
+.theme-night .rail-actions button:hover,
+.theme-night .rail-actions button.active {
+  border-color: #666666;
+  background: #343434;
+  color: #ffffff;
+}
+
+.theme-night .watchlist-picker-trigger {
+  color: #ffbe4d;
+}
+
+.theme-night .watchlist-picker-trigger svg,
+.theme-night .rail-header .anticon {
+  color: #ffbe4d;
+}

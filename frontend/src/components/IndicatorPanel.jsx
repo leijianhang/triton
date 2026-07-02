@@ -21,6 +21,7 @@ const indicatorDisplayTypes = {
   ema: '主图',
   boll: '主图',
   vwap: '主图',
+  gonogo: '主图',
   macd: '副图',
   rsi: '副图',
   kdj: '副图',
@@ -122,6 +123,14 @@ const IndicatorPanel = ({ initialIndicatorKey, onCancel, onConfirm }) => {
 
   const addIndicator = (key) => {
     const indicator = draftIndicators[key] || {};
+    const definition = indicatorLibrary.find(item => item.key === key);
+
+    if (definition?.canHaveOnlyOne) {
+      updateDraftIndicator(key, { enabled: true, visible: true, instances: [] });
+      setSelectedKey(key);
+      return;
+    }
+
     const existingInstances = indicator.instances?.length
       ? indicator.instances
       : (indicator.enabled ? [createInstanceFromIndicator(indicator, `${key}-1`)] : []);

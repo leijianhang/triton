@@ -268,6 +268,118 @@
   color: #198754;
 }
 
+.theme-night .tool-rail {
+  width: 46px;
+  gap: 0;
+  padding: 0;
+  background: #242424;
+  border-right-color: #343434;
+}
+
+.theme-night .tool-rail-group {
+  width: 46px;
+  gap: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.theme-night .tool-rail-group.destructive {
+  padding-top: 0;
+}
+
+.theme-night .tool-menu {
+  width: 46px;
+  height: 46px;
+}
+
+.theme-night .tool-button {
+  width: 46px;
+  height: 46px;
+  border: 0;
+  border-radius: 0;
+  color: #ffbe4d;
+}
+
+.theme-night .tool-button:hover {
+  border: 0;
+  background: #343434;
+  color: #ffbe4d;
+}
+
+.theme-night .tool-button.active {
+  border: 0;
+  background: transparent;
+  color: #ffbe4d;
+}
+
+.theme-night .tool-button svg {
+  font-size: 18px;
+}
+
+.theme-night .tool-menu-trigger {
+  right: 3px;
+  bottom: 3px;
+  color: #ffbe4d;
+}
+
+.theme-night .tool-menu:hover .tool-menu-trigger,
+.theme-night .tool-menu:focus-within .tool-menu-trigger {
+  color: #ffbe4d;
+}
+
+.theme-night .tool-menu::after {
+  left: 46px;
+  top: 0;
+  height: 46px;
+}
+
+.theme-night .tool-popout {
+  left: 46px;
+  top: 0;
+  min-width: 188px;
+  gap: 0;
+  padding: 0;
+  border-color: #343434;
+  border-radius: 0 3px 3px 0;
+  background: #242424;
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, .2), 0 4px 5px rgba(0, 0, 0, .14), 0 1px 10px rgba(0, 0, 0, .12);
+}
+
+.theme-night .tool-popout-title {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom-color: #343434;
+  color: #ffbe4d;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.theme-night .tool-popout-item {
+  min-height: 36px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 0 14px;
+  border-radius: 0;
+  color: #aaaaaa;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.theme-night .tool-popout-item svg,
+.theme-night .tool-popout-item .tool-glyph {
+  color: #ffbe4d;
+}
+
+.theme-night .tool-popout-item:hover,
+.theme-night .tool-popout-item.active {
+  background: #181818;
+  color: #ffbe4d;
+}
+
 .tool-glyph.pitchfork::before {
   left: 7px;
   right: auto;

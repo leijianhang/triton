@@ -3,7 +3,7 @@
   flex: 0 0 var(--dock-height);
   height: var(--dock-height);
   display: grid;
-  grid-template-rows: 6px 34px 32px 38px minmax(0, 1fr);
+  grid-template-rows: 6px 44px 32px 38px minmax(0, 1fr);
   min-width: 0;
   min-height: 180px;
   max-height: calc(100dvh - 150px);
@@ -13,23 +13,23 @@
 }
 
 .bottom-signal-dock.collapsed {
-  flex: 0 0 34px;
-  height: 34px;
-  grid-template-rows: 34px;
-  min-height: 34px;
-  max-height: 34px;
+  flex: 0 0 44px;
+  height: 44px;
+  grid-template-rows: 44px;
+  min-height: 44px;
+  max-height: 44px;
 }
 
 .bottom-signal-dock.has-config {
-  grid-template-rows: 6px 34px 32px 38px 48px minmax(0, 1fr);
+  grid-template-rows: 6px 44px 32px 38px 48px minmax(0, 1fr);
 }
 
 .bottom-signal-dock.open.scanner-mode {
-  grid-template-rows: 6px 34px minmax(0, 1fr);
+  grid-template-rows: 6px 44px minmax(0, 1fr);
 }
 
 .bottom-signal-dock.open.strategy-mode {
-  grid-template-rows: 6px 34px minmax(0, 1fr);
+  grid-template-rows: 6px 44px minmax(0, 1fr);
 }
 
 .bottom-signal-dock.open.strategy-maximized {
@@ -76,38 +76,38 @@ body.resizing-bottom-dock {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 8px;
+  gap: 0;
+  padding: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid #2b333c;
-  background: #0d141b;
+  border-bottom: 1px solid #424b55;
+  background: transparent;
 }
 
 .dock-tabs-bar button {
-  height: 26px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  border-radius: 5px 5px 0 0;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 2px;
   background: transparent;
-  color: #9eacb8;
-  font-size: 12px;
+  color: #6661c3;
+  font-size: 14px;
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
 }
 
-.dock-tabs-bar button:hover,
-.dock-tabs-bar .active {
-  border-color: #2d3d4c;
-  background: #101820;
-  color: #eafff5;
+.dock-tabs-bar button:hover {
+  background: transparent;
+  color: #0000ff;
 }
 
 .dock-tabs-bar .active {
-  border-color: #2dbf78;
-  box-shadow: inset 0 -2px 0 #2dbf78;
+  background: transparent;
+  color: #0000ff;
+  box-shadow: none;
 }
 
 .dock-panel-header {
@@ -4943,27 +4943,42 @@ body.resizing-bottom-dock {
 }
 
 .theme-day .dock-resize-handle,
-.theme-day .dock-tabs-bar,
 .theme-day .dock-panel-header,
 .theme-day .dock-action-bar {
   border-color: #cfd7df;
   background: #ffffff;
 }
 
-.theme-day .dock-tabs-bar button,
 .theme-day .dock-panel-header em,
 .theme-day .dock-action-bar button,
 .theme-day .dock-action-bar span {
   color: #50606f;
 }
 
-.theme-day .dock-tabs-bar button:hover,
-.theme-day .dock-tabs-bar .active,
 .theme-day .dock-action-bar button:hover,
 .theme-day .dock-action-bar button.active {
   border-color: #2dbf78;
   background: #e8f7ef;
   color: #198754;
+}
+
+.theme-day .dock-tabs-bar {
+  border: 0;
+  background: #ffffff;
+}
+
+.theme-day .dock-tabs-bar button {
+  border: 0;
+  background: transparent;
+  color: #6661c3;
+}
+
+.theme-day .dock-tabs-bar button:hover,
+.theme-day .dock-tabs-bar .active {
+  border: 0;
+  background: transparent;
+  color: #0000ff;
+  box-shadow: none;
 }
 
 .theme-day .dock-panel-header strong {
@@ -5269,6 +5284,59 @@ body.resizing-bottom-dock {
   border-color: #2dbf78;
   background: #e8f7ef;
   color: #198754;
+}
+
+.bottom-signal-dock .dock-tabs-bar button,
+.theme-day .bottom-signal-dock .dock-tabs-bar button {
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  background: transparent !important;
+  color: #6661c3 !important;
+  box-shadow: none !important;
+}
+
+.bottom-signal-dock .dock-tabs-bar button:hover,
+.theme-day .bottom-signal-dock .dock-tabs-bar button:hover {
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  background: transparent !important;
+  color: #0000ff !important;
+  box-shadow: none !important;
+}
+
+.bottom-signal-dock .dock-tabs-bar button.active,
+.theme-day .bottom-signal-dock .dock-tabs-bar button.active {
+  border: 0 !important;
+  border-bottom: 2px solid #0000ff !important;
+  background: transparent !important;
+  color: #0000ff !important;
+  box-shadow: none !important;
+}
+
+.theme-day .bottom-signal-dock .dock-tabs-bar {
+  border-bottom: 1px solid #b9b9b9;
+}
+
+.theme-night .bottom-signal-dock .dock-tabs-bar {
+  border-bottom: 1px solid #444444;
+  background: #242424;
+}
+
+.theme-night .bottom-signal-dock .dock-tabs-bar button {
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  background: transparent !important;
+  color: #ffbe4d !important;
+  box-shadow: none !important;
+}
+
+.theme-night .bottom-signal-dock .dock-tabs-bar button:hover,
+.theme-night .bottom-signal-dock .dock-tabs-bar button.active {
+  border: 0 !important;
+  border-bottom: 2px solid #ffffff !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
 }
 
 .theme-day .market-scanner-workspace,

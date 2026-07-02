@@ -65,6 +65,15 @@ export const indicatorLibrary = [
     tags: ['volume', 'overlay']
   },
   {
+    key: 'gonogo',
+    type: 'technical',
+    name: 'GoNoGo Trend',
+    shortName: 'GNG',
+    summary: '按当前趋势方向和强度为价格柱着色。',
+    tags: ['trend', 'overlay', 'bar color'],
+    canHaveOnlyOne: true
+  },
+  {
     key: 'obv',
     type: 'volume',
     name: 'On Balance Volume',

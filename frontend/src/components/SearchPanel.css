@@ -72,43 +72,68 @@
 
 .symbol-search-shell {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
-.symbol-search-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
+.symbol-search-filter-row {
+  min-height: 34px;
+  display: inline-grid;
+  grid-template-columns: repeat(4, minmax(76px, 1fr));
+  align-items: center;
+  justify-self: start;
+  gap: 2px;
   padding: 3px;
-  border: 1px solid #2b3742;
-  border-radius: 5px;
-  background: #0c1116;
+  border: 1px solid #263541;
+  border-radius: 6px;
+  background: #0a1015;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
 }
 
-.symbol-search-tabs button {
-  height: 30px;
-  border: 1px solid transparent;
+.symbol-search-filter-row button {
+  height: 28px;
+  min-width: 76px;
+  padding: 0 14px;
+  border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #9eabb6;
+  color: #8999a6;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
+  letter-spacing: 0;
+  transition: background .18s ease, color .18s ease, transform .18s ease;
 }
 
-.symbol-search-tabs button:hover,
-.symbol-search-tabs button.active {
-  border-color: #2dbf78;
-  background: #173426;
-  color: #eafff5;
+.symbol-search-filter-row button:hover {
+  background: #141f28;
+  color: #d7e1e8;
+}
+
+.symbol-search-filter-row button:active {
+  transform: translateY(1px);
+}
+
+.symbol-search-filter-row button.active,
+.symbol-search-filter-row button[aria-selected="true"] {
+  background: #eef4f8;
+  color: #111922;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
 }
 
 .symbol-search-input.ant-input-affix-wrapper {
-  height: 34px;
-  border-color: #2e3a45;
-  border-radius: 5px;
-  background: #0c1116;
+  height: 40px;
+  border-color: #2c3b47;
+  border-radius: 6px;
+  background: #0a1015;
   color: #eef4f8;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.symbol-search-input.ant-input-affix-wrapper:hover,
+.symbol-search-input.ant-input-affix-wrapper-focused {
+  border-color: #526575;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 0 0 2px rgba(117, 140, 158, .16);
 }
 
 .symbol-search-input .ant-input {
@@ -134,7 +159,7 @@
 .symbol-result-row {
   min-height: 64px;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(180px, .8fr) 112px;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, .8fr);
   align-items: center;
   gap: 16px;
   padding: 10px 14px;
@@ -202,10 +227,10 @@
 
 .theme-day .symbol-search-modal .ant-modal-content,
 .theme-day .symbol-search-modal .ant-modal-header,
-.theme-day .symbol-search-tabs,
+.theme-day .symbol-search-filter-row,
 .theme-day .symbol-search-list,
 .theme-day .symbol-search-input.ant-input-affix-wrapper {
-  border-color: #cfd7df;
+  border-color: #d6dee6;
   background: #ffffff;
 }
 
@@ -215,15 +240,25 @@
   color: #1f2933;
 }
 
-.theme-day .symbol-search-tabs button {
-  color: #50606f;
+.theme-day .symbol-search-filter-row {
+  background: #f3f6f9;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8);
 }
 
-.theme-day .symbol-search-tabs button:hover,
-.theme-day .symbol-search-tabs button.active {
-  border-color: #2dbf78;
-  background: #e8f7ef;
-  color: #198754;
+.theme-day .symbol-search-filter-row button {
+  color: #617181;
+}
+
+.theme-day .symbol-search-filter-row button:hover {
+  background: #e7edf3;
+  color: #1f2933;
+}
+
+.theme-day .symbol-search-filter-row button.active,
+.theme-day .symbol-search-filter-row button[aria-selected="true"] {
+  background: #ffffff;
+  color: #1f4f68;
+  box-shadow: inset 0 0 0 1px #a9c4d3, 0 1px 2px rgba(15, 23, 42, .08);
 }
 
 .theme-day .symbol-result-row {
@@ -246,31 +281,6 @@
   font-size: 12px;
   line-height: 1.35;
   white-space: normal;
-}
-
-.symbol-result-change {
-  justify-self: end;
-  display: grid;
-  justify-items: end;
-  gap: 3px;
-  color: #ef5350;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.05;
-}
-
-.symbol-result-change.down {
-  color: #26a69a;
-}
-
-.symbol-result-change strong,
-.symbol-result-change small {
-  font: inherit;
-  white-space: nowrap;
-}
-
-.symbol-result-change small {
-  opacity: .86;
 }
 
 .symbol-search-footer {
@@ -306,7 +316,7 @@
 
 @media (max-width: 720px) {
   .symbol-result-row {
-    grid-template-columns: minmax(0, 1fr) 64px;
+    grid-template-columns: minmax(0, 1fr);
     gap: 8px 12px;
   }
 

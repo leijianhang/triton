@@ -1,7 +1,7 @@
 {
   "name": "trading-platform-backend",
   "version": "1.0.0",
-  "description": "A股和期货技术分析平台后端服务",
+  "description": "A股、美股和港股技术分析平台后端服务",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
@@ -12,7 +12,7 @@
   "keywords": [
     "trading",
     "stock",
-    "futures",
+    "market-data",
     "technical-analysis"
   ],
   "author": "",
@@ -21,7 +21,6 @@
     "axios": "^1.6.0",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "mysql2": "^3.22.4",
     "node-cache": "^5.1.2",
     "ws": "^8.14.2"
   },

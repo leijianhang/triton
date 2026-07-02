@@ -2,7 +2,7 @@
 
 ## Goal
 
-Redesign the current A-share/futures analysis app into a professional chart-first trading terminal inspired by common TrendSpider-style workflows, without copying TrendSpider branding, proprietary text, icons, or pixel-level UI.
+Redesign the current A-share, US stock, and Hong Kong stock analysis app into a professional chart-first trading terminal inspired by common TrendSpider-style workflows, without copying TrendSpider branding, proprietary text, icons, or pixel-level UI.
 
 The selected direction is "Chart-First + bottom scanner/timing panel".
 
@@ -19,7 +19,7 @@ The selected direction is "Chart-First + bottom scanner/timing panel".
 - Scanner: ranks symbols by conditions such as trendline breakout, volume expansion, and moving-average alignment.
 - Timing Signals: shows multi-timeframe status such as daily trend, intraday momentum, pullback confirmation, and an overall score.
 - Strategy Results: summarizes strategy pass/fail status, risk/reward, and warning conditions.
-- Watchlist: keeps tracked stocks/futures visible without shrinking the chart too much.
+- Watchlist: keeps tracked A-share, US stock, and Hong Kong stock symbols visible without shrinking the chart too much.
 - Alerts: displays triggered, waiting, and inactive alert states.
 
 ## Visual Direction
@@ -34,7 +34,7 @@ The selected direction is "Chart-First + bottom scanner/timing panel".
 - Refactor the main React shell in `frontend/src/App.jsx`.
 - Add or update layout-focused components for top bar, left rail, right rail, and bottom dock.
 - Keep the existing chart, search, indicators, store, and backend APIs working.
-- Use mock scanner/timing/strategy rows for this pass, wired as UI state rather than backend data.
+- Use local scanner/timing/strategy rows for this pass, wired as UI state rather than backend data.
 - Preserve responsive usability by stacking side/bottom panels on smaller screens.
 
 ## Verification

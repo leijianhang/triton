@@ -55,57 +55,44 @@ const dedupedGet = (url, config = {}) => {
   return request;
 };
 
-export const stockAPI = {
-  getAll: (limit = 500) => {
-    return dedupedGet('/stock/list', { params: { market: 'all', limit } });
+export const marketAPI = {
+  getAll: (type = 'stock', options = 50) => {
+    const params = typeof options === 'number' ? { limit: options } : options;
+    return dedupedGet(`/market/${type}/list`, { params });
   },
 
-  search: (keyword, limit = 10) => {
-    return dedupedGet('/stock/search', { params: { keyword, limit } });
+  search: (type = 'stock', keyword, options = 12) => {
+    const params = typeof options === 'number' ? { keyword, limit: options } : { keyword, ...options };
+    return dedupedGet(`/market/${type}/search`, { params });
   },
 
-  getKline: (symbol, period = 'daily', adjust = 'qfq', options = {}) => {
-    return dedupedGet(`/stock/kline/${symbol}`, {
-      params: { period, adjust, ...options }
-    });
-  }
-};
-
-export const futuresAPI = {
-  getAll: (limit) => {
-    return dedupedGet('/futures/list', { params: limit ? { limit } : {} });
-  },
-
-  search: (keyword, limit = 12) => {
-    return dedupedGet('/futures/search', { params: { keyword, limit } });
-  },
-
-  getKline: (symbol, period = 'daily', options = {}) => {
-    return dedupedGet(`/futures/kline/${symbol}`, {
+  getKline: (type = 'stock', symbol, period = 'daily', options = {}) => {
+    return dedupedGet(`/market/${type}/kline/${symbol}`, {
       params: { period, ...options }
     });
   }
 };
 
 export const patternAPI = {
-  scanTheStrat: (data, patternType) => {
-    return apiClient.post('/pattern/the-strat', {
-      data,
-      patternType
+  scanCandle: (data) => {
+    return apiClient.post('/pattern/candle', {
+      data
     });
   },
 
-  scanAll: (data, window) => {
-    return apiClient.post('/pattern/all', {
-      data,
-      window
+  scanChart: (data) => {
+    return apiClient.post('/pattern/chart', {
+      data
     });
-  }
-};
+  },
 
-export const authAPI = {
-  login: ({ username, password }) => {
-    return apiClient.post('/auth/login', { username, password });
+  scanAll: (data, options) => {
+    const payload = typeof options === 'number'
+      ? { data, window: options }
+      : { data, ...(options || {}) };
+    return apiClient.post('/pattern/all', {
+      ...payload
+    });
   }
 };
 

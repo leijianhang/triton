@@ -1,146 +1,50 @@
-# A股和期货技术分析平台 - 后端服务
+# Market Analysis Backend
 
-## 功能特性
+Backend service for A-share, US stock, and Hong Kong stock chart data.
 
-- ✅ A股实时/历史K线数据
-- ✅ 期货实时/历史K线数据
-- ✅ 技术指标计算 (MA, EMA, MACD, RSI, KDJ, BOLL)
-- ✅ 股票/期货搜索
-- ✅ 数据缓存优化
-- ✅ RESTful API
+## Features
 
-## 技术栈
+- External market symbol list and search for A-shares, US stocks, and Hong Kong stocks
+- External market K-line data
+- Pattern scanning endpoints
+- In-memory request caching
+- REST API
 
-- Node.js + Express
-- Axios (HTTP客户端)
-- Node-Cache (内存缓存)
-
-## 快速开始
-
-### 安装依赖
+## Setup
 
 ```bash
 npm install
-```
-
-### 配置环境变量
-
-复制 `.env.example` 为 `.env` 并配置：
-
-```bash
-cp .env.example .env
-```
-
-### 启动服务
-
-```bash
-# 开发模式
 npm run dev
-
-# 生产模式
-npm start
 ```
 
-服务将运行在 `http://localhost:3001`
+The service runs at `http://localhost:3001` by default.
 
-## API文档
+## API
 
-### 股票相关
+### Market Data
 
-#### 获取股票列表
-```
-GET /api/stock/list?market=sh
-```
-
-#### 搜索股票
-```
-GET /api/stock/search?keyword=茅台
+```http
+GET /api/market/:type/list?limit=10
+GET /api/market/:type/search?keyword=AAPL&limit=12
+GET /api/market/:type/kline/:symbol?period=daily&limit=200&before=2025-01-01
 ```
 
-#### 获取K线数据
-```
-GET /api/stock/kline/:symbol?period=daily&adjust=qfq
-```
+Supported `type` values:
 
-参数：
-- `symbol`: 股票代码 (如: 600519)
-- `period`: 周期 (1min, 5min, 15min, 30min, 60min, daily, weekly, monthly)
-- `adjust`: 复权类型 (qfq: 前复权, hfq: 后复权, none: 不复权)
+- `stock`: A-shares
+- `us`: US stocks
+- `hk`: Hong Kong stocks
 
-### 期货相关
+The legacy `/api/stock/*` routes are kept as A-share aliases and also use the external market service.
 
-#### 获取期货列表
-```
-GET /api/futures/list?exchange=SHFE
-```
+### Patterns
 
-#### 搜索期货
-```
-GET /api/futures/search?keyword=铜
+```http
+POST /api/pattern/candle
+POST /api/pattern/chart
+POST /api/pattern/all
 ```
 
-#### 获取期货K线数据
-```
-GET /api/futures/kline/:symbol?period=daily
-```
+## Configuration
 
-### 技术指标
-
-#### 计算指标
-```
-POST /api/indicator/calculate
-Content-Type: application/json
-
-{
-  "type": "MA",
-  "data": [
-    {"close": 100.5},
-    {"close": 101.2},
-    ...
-  ],
-  "params": {
-    "period": 5
-  }
-}
-```
-
-支持的指标类型：
-- `MA`: 简单移动平均线
-- `EMA`: 指数移动平均线
-- `MACD`: 平滑异同移动平均线
-- `RSI`: 相对强弱指标
-- `KDJ`: 随机指标
-- `BOLL`: 布林带
-
-## 数据源
-
-当前使用模拟数据和新浪财经免费API（有延迟）。
-
-生产环境建议使用：
-- **Tushare Pro**: 专业A股数据
-- **聚宽/米筐**: 量化数据平台
-- **交易所官方API**: 期货数据
-
-## 项目结构
-
-```
-backend/
-├── src/
-│   ├── controllers/     # 控制器
-│   ├── routes/          # 路由
-│   ├── services/        # 业务逻辑
-│   ├── utils/           # 工具函数
-│   ├── config/          # 配置文件
-│   └── index.js         # 入口文件
-├── package.json
-└── .env.example
-```
-
-## 下一步开发
-
-- [ ] WebSocket实时推送
-- [ ] Redis缓存
-- [ ] 用户认证系统
-- [ ] 价格预警功能
-- [ ] 数据库持久化
-- [ ] 对接专业数据源
+`config/backend-config.json` only contains the HTTP port. There are no database connections in the backend runtime.

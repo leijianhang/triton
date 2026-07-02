@@ -1,38 +1,37 @@
 #!/bin/bash
 
 echo "========================================"
-echo "  A股期货技术分析平台 - 启动脚本"
+echo "  Market Analysis Platform - Start"
 echo "========================================"
 echo ""
 
-echo "[1/3] 检查依赖..."
-cd backend
+echo "[1/3] Checking dependencies..."
+cd backend || exit 1
 if [ ! -d "node_modules" ]; then
-    echo "后端依赖未安装，正在安装..."
+    echo "Installing backend dependencies..."
     npm install
 fi
 
-cd ../frontend
+cd ../frontend || exit 1
 if [ ! -d "node_modules" ]; then
-    echo "前端依赖未安装，正在安装..."
+    echo "Installing frontend dependencies..."
     npm install
 fi
 
 cd ..
 
 echo ""
-echo "[2/3] 启动后端服务..."
-cd backend
+echo "[2/3] Starting backend..."
+cd backend || exit 1
 npm run dev &
 BACKEND_PID=$!
 
 cd ..
-
 sleep 3
 
 echo ""
-echo "[3/3] 启动前端应用..."
-cd frontend
+echo "[3/3] Starting frontend..."
+cd frontend || exit 1
 npm run dev &
 FRONTEND_PID=$!
 
@@ -40,14 +39,13 @@ cd ..
 
 echo ""
 echo "========================================"
-echo "  服务启动完成！"
+echo "  Services started"
 echo "========================================"
-echo "  后端服务: http://localhost:3001"
-echo "  前端应用: http://localhost:3000"
+echo "  Backend:  http://localhost:3001"
+echo "  Frontend: Vite dev server output"
 echo "========================================"
 echo ""
-echo "按 Ctrl+C 停止所有服务"
+echo "Press Ctrl+C to stop all services."
 
-# 等待用户中断
 trap "kill $BACKEND_PID $FRONTEND_PID; exit" INT
 wait

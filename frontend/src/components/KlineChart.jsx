@@ -12,6 +12,7 @@ import {
 import {
   getChartTime,
   toCandleData,
+  toHeikinAshiData,
   toLineData,
   toVolumeData
 } from './chartDataTransform';
@@ -30,11 +31,26 @@ import {
 } from './indicatorLegend';
 import DrawingOverlay from './DrawingOverlay';
 import { getPatternLegendItems, getPatternMarkers } from './patternMarkers';
+import { applyGoNoGoColors } from './goNoGoIndicator';
 import { useChartStore } from '../store/chartStore';
 import './KlineChart.css';
 
 const DEFAULT_VISIBLE_BARS = 160;
 const LOAD_OLDER_VISIBLE_THRESHOLD = 8;
+
+const clampReplayLogicalRange = (range, length) => {
+  if (!range) return null;
+
+  const lastIndex = Math.max(0, Number(length) - 1);
+  const span = range.to - range.from;
+  if (!Number.isFinite(span) || span <= 0) return range;
+
+  if (range.to > lastIndex) {
+    return { from: lastIndex - span, to: lastIndex };
+  }
+
+  return range;
+};
 
 const baseChartOptions = {
   layout: {
@@ -57,8 +73,27 @@ const baseChartOptions = {
     },
   },
   rightPriceScale: {
+    autoScale: true,
     borderColor: '#2d3348',
     minimumWidth: 72,
+  },
+  handleScroll: {
+    mouseWheel: true,
+    pressedMouseMove: true,
+    horzTouchDrag: true,
+    vertTouchDrag: false,
+  },
+  handleScale: {
+    mouseWheel: true,
+    pinch: true,
+    axisPressedMouseMove: {
+      time: true,
+      price: true,
+    },
+    axisDoubleClickReset: {
+      time: true,
+      price: true,
+    },
   },
   timeScale: {
     borderColor: '#2d3348',
@@ -129,8 +164,7 @@ const getVisibleTimeScaleOptions = theme => ({
 
 const patternGroupFields = {
   candlestick: 'candlePatterns',
-  chart: 'chartPatterns',
-  thestrat: 'theStratPatterns'
+  chart: 'chartPatterns'
 };
 
 const lowerIndicatorColorSets = {
@@ -158,8 +192,12 @@ const KlineChart = ({
   strategyMarkers = [],
   activeDrawingTool,
   addDrawing,
+  autoFibonacciEnabled = false,
+  autoTrendSettings = { enabled: false, quality: 'relevant' },
   deleteDrawing,
   drawingsBySymbol = {},
+  heatmapEnabled = false,
+  heatmapType = 'horizontal',
   selectedDrawingId,
   selectDrawing,
   updateDrawing,
@@ -167,6 +205,16 @@ const KlineChart = ({
   onLowerLegendCollapsedChange,
   onHoverBar,
   onIndicatorSettings,
+  onReplayTimeSelect,
+  onVisibleRightTimeChange,
+  replayBoundaryTime = null,
+  replaySelecting = false,
+  replayLiveJumpKey = 0,
+  replayResetAlignKey = 0,
+  replayResetTargetTime = null,
+  replaySeekAlignKey = 0,
+  replayStartAlignKey = 0,
+  replayTimelineData = [],
   onLoadOlderData,
   theme = 'night'
 }) => {
@@ -179,6 +227,7 @@ const KlineChart = ({
   const [sharedCrosshairX, setSharedCrosshairX] = useState(null);
   const [sharedCrosshairY, setSharedCrosshairY] = useState(null);
   const [sharedCrosshairTimeLabel, setSharedCrosshairTimeLabel] = useState('');
+  const [replaySelectionPreview, setReplaySelectionPreview] = useState(null);
   const containerRef = useRef(null);
   const pricePaneRef = useRef(null);
   const volumePaneRef = useRef(null);
@@ -197,13 +246,54 @@ const KlineChart = ({
   const syncingRangeRef = useRef(false);
   const syncingCrosshairRef = useRef(false);
   const clampingRangeRef = useRef(false);
+  const priceBoundaryDragRef = useRef(null);
+  const priceBoundaryClampFrameRef = useRef(null);
   const activeIndexRef = useRef(null);
+  const chartDataRef = useRef(data);
   const dataLengthRef = useRef(data?.length || 0);
+  const timelineLengthRef = useRef(data?.length || 0);
   const previousDataMetaRef = useRef({ length: 0, firstTime: null, lastTime: null });
   const loadingOlderRef = useRef(false);
   const loadOlderDataRef = useRef(onLoadOlderData);
+  const replayTimelineDataRef = useRef(replayTimelineData);
+  const replayBoundedRef = useRef(false);
+  const onReplayTimeSelectRef = useRef(onReplayTimeSelect);
+  const onVisibleRightTimeChangeRef = useRef(onVisibleRightTimeChange);
+  const replayAlignKeysRef = useRef({ reset: 0, seek: 0, start: 0 });
+  const replayVisibleSpanRef = useRef(DEFAULT_VISIBLE_BARS - 1);
+  const replaySelectionRevealKeyRef = useRef('');
   const visibleRangeInitializedRef = useRef(false);
+  const visibleLogicalRangeRef = useRef(null);
   const lowerIndicatorKeys = ['macd', 'rsi', 'kdj', 'obv'];
+  const replayHasBoundary = replayBoundaryTime !== null && replayBoundaryTime !== undefined && !replaySelecting;
+  const replayTimelineLength = Array.isArray(replayTimelineData) && replayTimelineData.length
+    ? replayTimelineData.length
+    : 0;
+  const replayVisibleLength = useMemo(() => {
+    if (!replayHasBoundary) return 0;
+
+    let boundaryTime = null;
+    try {
+      boundaryTime = getChartTime({ time: replayBoundaryTime });
+    } catch {
+      return 0;
+    }
+
+    const rows = Array.isArray(replayTimelineData) && replayTimelineData.length
+      ? replayTimelineData
+      : data;
+    let visibleCount = 0;
+    rows.forEach(row => {
+      try {
+        if (getChartTime(row) <= boundaryTime) visibleCount += 1;
+      } catch {
+        // Ignore rows the charting library cannot render.
+      }
+    });
+
+    return visibleCount;
+  }, [data, replayBoundaryTime, replayHasBoundary, replayTimelineData]);
+  const timelineLength = replayVisibleLength || replayTimelineLength || data?.length || 0;
   const lowerIndicatorItems = useMemo(() => (
     lowerIndicatorKeys.flatMap(baseKey => {
       const indicator = indicators[baseKey];
@@ -224,6 +314,7 @@ const KlineChart = ({
     })
   ), [indicators]);
   const lowerIndicatorKeySignature = lowerIndicatorItems.map(item => item.key).join('|');
+  const goNoGoActive = indicators.gonogo?.enabled && indicators.gonogo?.visible !== false;
   const bottomTimeScalePane = lowerIndicatorItems.length
     ? lowerIndicatorItems[lowerIndicatorItems.length - 1].key
     : (showVolume ? 'volume' : 'price');
@@ -232,12 +323,24 @@ const KlineChart = ({
     loadOlderDataRef.current = onLoadOlderData;
   }, [onLoadOlderData]);
 
-  const scopedLowerData = useMemo(() => {
-    if (!activeLegendBar) return data;
-    const activeTime = getChartTime(activeLegendBar);
-    const activeIndex = data.findIndex(item => item === activeLegendBar || getChartTime(item) === activeTime);
-    return activeIndex >= 0 ? data.slice(0, activeIndex + 1) : data;
-  }, [activeLegendBar, data]);
+  useEffect(() => {
+    replayTimelineDataRef.current = Array.isArray(replayTimelineData) && replayTimelineData.length
+      ? replayTimelineData
+      : data;
+  }, [data, replayTimelineData]);
+
+  useEffect(() => {
+    replayBoundedRef.current = replayHasBoundary;
+  }, [replayHasBoundary]);
+
+  useEffect(() => {
+    onReplayTimeSelectRef.current = onReplayTimeSelect;
+  }, [onReplayTimeSelect]);
+
+  useEffect(() => {
+    onVisibleRightTimeChangeRef.current = onVisibleRightTimeChange;
+  }, [onVisibleRightTimeChange]);
+
   const formatLowerValue = value => (Number.isFinite(value) ? Number(value).toFixed(2) : '-');
   const formatVolumeValue = value => {
     if (!Number.isFinite(value)) return '-';
@@ -260,6 +363,111 @@ const KlineChart = ({
       ?? priceChartRef.current?.timeScale().timeToCoordinate(time);
 
     return Number.isFinite(x) ? x : null;
+  };
+  const getReplayRows = () => (
+    Array.isArray(replayTimelineDataRef.current) && replayTimelineDataRef.current.length
+      ? replayTimelineDataRef.current
+      : data
+  );
+  const getClampedLogicalRange = (range, length) => (
+    replayBoundedRef.current
+      ? clampReplayLogicalRange(range, length)
+      : clampLogicalRange(range, length)
+  );
+  const replayLegendRows = useMemo(() => {
+    if (!replayHasBoundary) {
+      return data;
+    }
+
+    let boundaryTime = null;
+    try {
+      boundaryTime = getChartTime({ time: replayBoundaryTime });
+    } catch {
+      return data;
+    }
+
+    const rows = Array.isArray(replayTimelineData) && replayTimelineData.length
+      ? replayTimelineData
+      : data;
+    const visibleRows = [];
+    rows.forEach(row => {
+      try {
+        const rowTime = getChartTime(row);
+        if (rowTime <= boundaryTime) {
+          visibleRows.push(row);
+        }
+      } catch {
+        // Ignore rows the charting library cannot render.
+      }
+    });
+
+    return visibleRows.length ? visibleRows : data;
+  }, [data, replayBoundaryTime, replayHasBoundary, replayTimelineData]);
+  const activeReplayBar = replayHasBoundary
+    ? replayLegendRows?.[replayLegendRows.length - 1]
+    : null;
+  const effectiveLegendBar = activeLegendBar || activeReplayBar;
+  const replayMaxPatternTime = activeReplayBar ? getChartTime(activeReplayBar) : null;
+
+  useEffect(() => {
+    if (activeReplayBar) onHoverBar?.(activeReplayBar);
+  }, [activeReplayBar, onHoverBar]);
+
+  const scopedLowerData = useMemo(() => {
+    if (!effectiveLegendBar) return data;
+    const activeTime = getChartTime(effectiveLegendBar);
+    const activeIndex = data.findIndex(item => item === effectiveLegendBar || getChartTime(item) === activeTime);
+    return activeIndex >= 0 ? data.slice(0, activeIndex + 1) : data;
+  }, [effectiveLegendBar, data]);
+  const getReplaySeriesParts = () => {
+    if (!replayHasBoundary) {
+      return { rows: data, whitespace: [] };
+    }
+
+    let boundaryTime = null;
+    try {
+      boundaryTime = getChartTime({ time: replayBoundaryTime });
+    } catch {
+      return { rows: replayLegendRows, whitespace: [] };
+    }
+
+    const rows = getReplayRows();
+    const visibleRows = [];
+    const whitespace = [];
+    rows.forEach(row => {
+      try {
+        const rowTime = getChartTime(row);
+        if (rowTime <= boundaryTime) {
+          visibleRows.push(row);
+        } else {
+          whitespace.push({ time: rowTime });
+        }
+      } catch {
+        // Ignore rows the charting library cannot render.
+      }
+    });
+
+    return {
+      rows: visibleRows.length ? visibleRows : replayLegendRows,
+      whitespace
+    };
+  };
+  const appendReplayWhitespace = rows => {
+    const replayParts = getReplaySeriesParts();
+    return replayParts.whitespace.length ? [...rows, ...replayParts.whitespace] : rows;
+  };
+  const notifyVisibleRightTime = (range) => {
+    const rows = chartDataRef.current;
+    if (!range || !Array.isArray(rows) || !rows.length) return;
+    const rightIndex = Math.max(0, Math.min(rows.length - 1, Math.floor(range.to)));
+    const rightBar = rows[rightIndex];
+    if (!rightBar) return;
+    try {
+      const rightTime = getChartTime(rightBar);
+      onVisibleRightTimeChangeRef.current?.(rightTime);
+    } catch {
+      // Ignore rows the charting library cannot render.
+    }
   };
   const buildLowerLegendItem = (item) => {
     const baseKey = item.baseKey || item.key;
@@ -346,7 +554,7 @@ const KlineChart = ({
       ? [buildLowerLegendItem({ key: baseKey, baseKey, instanceIndex: 0, state: indicator })]
       : [];
   });
-  const activeVolumeBar = activeLegendBar || data?.[data.length - 1];
+  const activeVolumeBar = effectiveLegendBar || data?.[data.length - 1];
   const activeVolumeValue = Number(activeVolumeBar?.volume ?? activeVolumeBar?.vol);
   const volumeLegendValue = formatVolumeValue(activeVolumeValue);
   const paneLayout = getChartPaneLayout(showVolume, lowerIndicatorItems.length);
@@ -354,24 +562,37 @@ const KlineChart = ({
     getOverlayIndicatorLegendItems(indicators),
     indicators,
     data,
-    activeLegendBar
+    effectiveLegendBar
   );
   const visibleOverlayLegendItems = overlayLegendItems.filter(item => item.visible !== false);
   const hiddenOverlayLegendItems = overlayLegendItems.filter(item => item.visible === false);
-  const patternLegendItems = patterns?.showPatterns === false ? [] : getPatternLegendItems(patterns);
+  const patternLegendItems = patterns?.showPatterns === false ? [] : getPatternLegendItems(patterns, replayMaxPatternTime);
   const setIndicatorVisible = useChartStore(state => state.setIndicatorVisible);
   const toggleIndicator = useChartStore(state => state.toggleIndicator);
   const updateIndicatorParams = useChartStore(state => state.updateIndicatorParams);
   const setPatterns = useChartStore(state => state.setPatterns);
 
   useEffect(() => {
+    chartDataRef.current = data;
     dataLengthRef.current = data?.length || 0;
-  }, [data, bottomTimeScalePane, lowerIndicatorKeySignature]);
+    timelineLengthRef.current = timelineLength || data?.length || 0;
+  }, [data, timelineLength, bottomTimeScalePane, lowerIndicatorKeySignature]);
+
+  useEffect(() => {
+    const range = priceChartRef.current?.timeScale().getVisibleLogicalRange?.();
+    if (range) notifyVisibleRightTime(range);
+  }, [data, timelineLength]);
+
+  useEffect(() => {
+    if (!replaySelecting || !replayLiveJumpKey) return;
+    applyLatestVisibleRange();
+  }, [replayLiveJumpKey, replaySelecting]);
 
   useEffect(() => {
     activeIndexRef.current = null;
     previousDataMetaRef.current = { length: 0, firstTime: null, lastTime: null };
     visibleRangeInitializedRef.current = false;
+    visibleLogicalRangeRef.current = null;
     loadingOlderRef.current = false;
   }, [currentSymbol, period]);
 
@@ -577,19 +798,203 @@ const KlineChart = ({
     }));
   };
 
+  const lockPriceScaleForManualScroll = () => {
+    window.requestAnimationFrame(() => {
+      priceChartRef.current?.priceScale('right').applyOptions({ autoScale: false });
+    });
+  };
+
+  const getInternalRightPriceScale = () => {
+    const priceScaleApi = priceChartRef.current?.priceScale('right');
+    return typeof priceScaleApi?._private__priceScale === 'function'
+      ? priceScaleApi._private__priceScale()
+      : null;
+  };
+
+  const clampPriceRangeAtZero = () => {
+    if (!priceChartRef.current || scaleMode === 'log') return;
+
+    const priceScale = getInternalRightPriceScale();
+    const priceRange = priceScale?._internal_priceRange?.();
+    const scaleHeight = priceScale?._internal_height?.();
+    const firstValue = priceScale?._internal_firstValue?.();
+    if (!priceRange || !Number.isFinite(scaleHeight) || scaleHeight <= 2 || firstValue === null) return;
+
+    const baseValue = typeof firstValue === 'object' && firstValue !== null && '_internal_value' in firstValue
+      ? firstValue._internal_value
+      : firstValue;
+    const bottomVisiblePrice = priceScale._internal_coordinateToPrice?.(scaleHeight - 2, baseValue);
+    const minValue = priceRange._internal_minValue?.();
+    const overflow = Number.isFinite(bottomVisiblePrice) && bottomVisiblePrice < 0
+      ? -bottomVisiblePrice
+      : (Number.isFinite(minValue) && minValue < 0 ? -minValue : 0);
+    if (!overflow) return;
+
+    const nextRange = priceRange._internal_clone();
+    nextRange._internal_shift(overflow);
+    priceScale._internal_setPriceRange(nextRange, true);
+    priceChartRef.current?._private__chartWidget?._internal_model?.()?._internal_lightUpdate?.();
+  };
+
+  const getPointerPaneY = (event) => {
+    const paneRect = pricePaneRef.current?.getBoundingClientRect();
+    if (!paneRect) return null;
+    return Math.max(0, Math.min(paneRect.height, event.clientY - paneRect.top));
+  };
+
+  const shiftPriceRangeByPointerMove = (event) => {
+    if (!priceChartRef.current || scaleMode === 'log') return;
+
+    const dragState = priceBoundaryDragRef.current;
+    const currentY = getPointerPaneY(event);
+    const priceScale = getInternalRightPriceScale();
+    const priceRange = priceScale?._internal_priceRange?.();
+    const firstValue = priceScale?._internal_firstValue?.();
+    if (!dragState || currentY === null || !priceRange || firstValue === null) return;
+
+    if (!dragState.verticalPan) {
+      const deltaX = Math.abs(event.clientX - dragState.startX);
+      const deltaY = Math.abs(currentY - dragState.startY);
+      if (deltaY < 4 || deltaY <= deltaX) return;
+
+      dragState.verticalPan = true;
+      dragState.lastY = currentY;
+      event.currentTarget.setPointerCapture?.(dragState.pointerId);
+      return;
+    }
+
+    event.preventDefault();
+    const previousY = dragState.lastY;
+    dragState.lastY = currentY;
+    if (!Number.isFinite(previousY) || Math.abs(currentY - previousY) < 1) return;
+
+    const baseValue = typeof firstValue === 'object' && firstValue !== null && '_internal_value' in firstValue
+      ? firstValue._internal_value
+      : firstValue;
+    const previousPrice = priceScale._internal_coordinateToPrice?.(previousY, baseValue);
+    const currentPrice = priceScale._internal_coordinateToPrice?.(currentY, baseValue);
+    const shift = Number.isFinite(previousPrice) && Number.isFinite(currentPrice)
+      ? previousPrice - currentPrice
+      : 0;
+    if (!shift) return;
+
+    const nextRange = priceRange._internal_clone();
+    nextRange._internal_shift(shift);
+    priceScale._internal_setPriceRange(nextRange, true);
+    priceChartRef.current?._private__chartWidget?._internal_model?.()?._internal_lightUpdate?.();
+  };
+
+  const schedulePriceRangeClamp = () => {
+    if (priceBoundaryClampFrameRef.current) return;
+
+    priceBoundaryClampFrameRef.current = window.requestAnimationFrame(() => {
+      priceBoundaryClampFrameRef.current = null;
+      clampPriceRangeAtZero();
+      if (priceBoundaryDragRef.current) {
+        schedulePriceRangeClamp();
+      }
+    });
+  };
+
+  const handlePricePanePointerDown = (event) => {
+    if (activeDrawingTool && activeDrawingTool !== 'select') return;
+    if (event.button !== 0) return;
+
+    const pointerY = getPointerPaneY(event);
+    if (pointerY === null) return;
+    priceBoundaryDragRef.current = {
+      lastY: pointerY,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: pointerY,
+      verticalPan: false
+    };
+    lockPriceScaleForManualScroll();
+    schedulePriceRangeClamp();
+  };
+
+  const handlePricePanePointerMove = (event) => {
+    const dragState = priceBoundaryDragRef.current;
+    if (!dragState) return;
+
+    shiftPriceRangeByPointerMove(event);
+    schedulePriceRangeClamp();
+  };
+
+  const handlePricePanePointerEnd = (event) => {
+    const pointerId = priceBoundaryDragRef.current?.pointerId ?? event?.pointerId;
+    if (pointerId !== undefined) {
+      event?.currentTarget?.releasePointerCapture?.(pointerId);
+    }
+    priceBoundaryDragRef.current = null;
+    schedulePriceRangeClamp();
+  };
+
+  const rememberVisibleLogicalRange = (range) => {
+    if (!range || !Number.isFinite(range.from) || !Number.isFinite(range.to)) return;
+    visibleLogicalRangeRef.current = { from: range.from, to: range.to };
+    const span = range.to - range.from;
+    if (Number.isFinite(span) && span > 2) {
+      replayVisibleSpanRef.current = span;
+    }
+  };
+
+  const applyVisibleLogicalRangeToAllCharts = (range) => {
+    if (!range) return;
+
+    syncingRangeRef.current = true;
+    try {
+      priceChartRef.current?.timeScale().setVisibleLogicalRange(range);
+      volumeChartRef.current?.timeScale().setVisibleLogicalRange(range);
+      Object.values(lowerChartRefs.current).forEach(lowerChart => {
+        lowerChart?.timeScale().setVisibleLogicalRange(range);
+      });
+    } finally {
+      syncingRangeRef.current = false;
+    }
+  };
+
   const applyDefaultVisibleRange = () => {
+    if (!priceChartRef.current || !data?.length) return;
+    if (replayStartAlignKey && replayBoundaryTime !== null && replayBoundaryTime !== undefined && !replaySelecting) {
+      return;
+    }
+    if (visibleRangeInitializedRef.current) {
+      const preservedRange = visibleLogicalRangeRef.current
+        || priceChartRef.current.timeScale().getVisibleLogicalRange();
+      if (preservedRange) {
+        applyVisibleLogicalRangeToAllCharts(preservedRange);
+        rememberVisibleLogicalRange(preservedRange);
+        notifyVisibleRightTime(preservedRange);
+      }
+      lockPriceScaleForManualScroll();
+      return;
+    }
+
+    const lastIndex = data.length - 1;
+    const firstIndex = Math.max(0, lastIndex - DEFAULT_VISIBLE_BARS + 1);
+    const range = { from: firstIndex, to: lastIndex };
+    applyVisibleLogicalRangeToAllCharts(range);
+    rememberVisibleLogicalRange(range);
+    notifyVisibleRightTime(range);
+    window.requestAnimationFrame(() => {
+      visibleRangeInitializedRef.current = true;
+      lockPriceScaleForManualScroll();
+    });
+  };
+
+  const applyLatestVisibleRange = () => {
     if (!priceChartRef.current || !data?.length) return;
 
     const lastIndex = data.length - 1;
     const firstIndex = Math.max(0, lastIndex - DEFAULT_VISIBLE_BARS + 1);
     const range = { from: firstIndex, to: lastIndex };
-    priceChartRef.current.timeScale().setVisibleLogicalRange(range);
-    volumeChartRef.current?.timeScale().setVisibleLogicalRange(range);
-    Object.values(lowerChartRefs.current).forEach(lowerChart => {
-      lowerChart?.timeScale().setVisibleLogicalRange(range);
-    });
+    applyVisibleLogicalRangeToAllCharts(range);
+    rememberVisibleLogicalRange(range);
+    notifyVisibleRightTime(range);
+    visibleRangeInitializedRef.current = true;
     window.requestAnimationFrame(() => {
-      visibleRangeInitializedRef.current = true;
+      lockPriceScaleForManualScroll();
     });
   };
 
@@ -613,6 +1018,7 @@ const KlineChart = ({
     setSharedCrosshairX(null);
     setSharedCrosshairY(null);
     setSharedCrosshairTimeLabel('');
+    setReplaySelectionPreview(null);
     if (priceSeriesRef.current && crosshairPriceLineRef.current) {
       priceSeriesRef.current.removePriceLine(crosshairPriceLineRef.current);
       crosshairPriceLineRef.current = null;
@@ -777,8 +1183,10 @@ const KlineChart = ({
         if (!range || syncingRangeRef.current) return;
         if (clampingRangeRef.current) return;
         requestOlderDataIfNeeded(range);
-        const clampedRange = clampLogicalRange(range, dataLengthRef.current) || range;
+        const clampedRange = getClampedLogicalRange(range, timelineLengthRef.current) || range;
         const rangeWasClamped = clampedRange.from !== range.from || clampedRange.to !== range.to;
+        rememberVisibleLogicalRange(clampedRange);
+        notifyVisibleRightTime(clampedRange);
 
         syncingRangeRef.current = true;
         allCharts.forEach(target => {
@@ -830,6 +1238,12 @@ const KlineChart = ({
     }
 
     return () => {
+      rememberVisibleLogicalRange(priceChart.timeScale().getVisibleLogicalRange());
+      if (priceBoundaryClampFrameRef.current) {
+        window.cancelAnimationFrame(priceBoundaryClampFrameRef.current);
+        priceBoundaryClampFrameRef.current = null;
+      }
+      priceBoundaryDragRef.current = null;
       window.removeEventListener('resize', handleResize);
       resizeObserver?.disconnect();
       priceChart.remove();
@@ -871,9 +1285,9 @@ const KlineChart = ({
 
     const chart = priceChartRef.current;
     const handleRangeClamp = (range) => {
-      if (!range || clampingRangeRef.current) return;
+      if (!range || clampingRangeRef.current || syncingRangeRef.current) return;
 
-      const clamped = clampLogicalRange(range, data.length);
+      const clamped = getClampedLogicalRange(range, timelineLengthRef.current || data.length);
       if (!clamped || (clamped.from === range.from && clamped.to === range.to)) return;
 
       clampingRangeRef.current = true;
@@ -882,6 +1296,8 @@ const KlineChart = ({
       Object.values(lowerChartRefs.current).forEach(lowerChart => {
         lowerChart?.timeScale().setVisibleLogicalRange(clamped);
       });
+      rememberVisibleLogicalRange(clamped);
+      notifyVisibleRightTime(clamped);
       updateSharedCrosshairLine();
       clampingRangeRef.current = false;
     };
@@ -891,13 +1307,14 @@ const KlineChart = ({
     return () => {
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleRangeClamp);
     };
-  }, [data]);
+  }, [data, timelineLength]);
 
   useEffect(() => {
     if (!priceChartRef.current || !data || data.length === 0) return undefined;
 
     const chart = priceChartRef.current;
-    const timeToBar = new Map(data.map(item => [getChartTime(item), item]));
+    const replayParts = getReplaySeriesParts();
+    const timeToBar = new Map(replayParts.rows.map(item => [getChartTime(item), item]));
     const getBarFromParam = (param) => {
       if (!param?.time || !param.point) {
         return null;
@@ -917,6 +1334,13 @@ const KlineChart = ({
         price: Number.isFinite(Number(hoveredPrice)) ? hoveredPrice : hoveredBar.close,
         y: param.point?.y
       });
+      if (replaySelecting) {
+        const hoveredTime = getChartTime(hoveredBar);
+        const x = getSharedXForTime(hoveredTime) ?? param.point?.x;
+        setReplaySelectionPreview(Number.isFinite(x)
+          ? { x, label: formatCrosshairTimeLabel(hoveredBar) }
+          : null);
+      }
     };
     const handleVolumeCrosshairMove = (param) => {
       if (syncingCrosshairRef.current) return;
@@ -951,7 +1375,99 @@ const KlineChart = ({
         lowerChart.unsubscribeCrosshairMove(handler);
       });
     };
-  }, [data, onHoverBar, lowerIndicatorKeySignature, bottomTimeScalePane]);
+  }, [data, onHoverBar, replayBoundaryTime, replaySelecting, replayTimelineData, lowerIndicatorKeySignature, bottomTimeScalePane]);
+
+  useEffect(() => {
+    if (!replaySelecting || !priceChartRef.current) return undefined;
+
+    const handleReplayClick = (param) => {
+      if (!param?.time) return;
+
+      let selectedTime = null;
+      try {
+        selectedTime = getChartTime({ time: param.time });
+      } catch {
+        return;
+      }
+
+      const rows = Array.isArray(replayTimelineDataRef.current) ? replayTimelineDataRef.current : [];
+      const matchedBar = rows.find(row => {
+        try {
+          return getChartTime(row) === selectedTime;
+        } catch {
+          return false;
+        }
+      });
+
+      if (!matchedBar) return;
+      onReplayTimeSelectRef.current?.(getChartTime(matchedBar));
+    };
+
+    const replayClickCharts = [
+      priceChartRef.current,
+      volumeChartRef.current,
+      ...Object.values(lowerChartRefs.current)
+    ].filter(Boolean);
+
+    replayClickCharts.forEach(chart => {
+      chart.subscribeClick(handleReplayClick);
+    });
+
+    return () => {
+      replayClickCharts.forEach(chart => {
+        chart.unsubscribeClick(handleReplayClick);
+      });
+    };
+  }, [replaySelecting, lowerIndicatorKeySignature, showVolume, bottomTimeScalePane]);
+
+  useEffect(() => {
+    if (!replaySelecting) setReplaySelectionPreview(null);
+  }, [replaySelecting]);
+
+  useEffect(() => {
+    if (!replaySelecting || replayBoundaryTime === null || replayBoundaryTime === undefined || !priceChartRef.current) {
+      replaySelectionRevealKeyRef.current = '';
+      return;
+    }
+
+    let normalizedBoundaryTime = null;
+    try {
+      normalizedBoundaryTime = getChartTime({ time: replayBoundaryTime });
+    } catch {
+      return;
+    }
+
+    const revealKey = `${currentSymbol || ''}:${period || ''}:${normalizedBoundaryTime}`;
+    if (replaySelectionRevealKeyRef.current === revealKey) return;
+
+    const rows = Array.isArray(replayTimelineDataRef.current) ? replayTimelineDataRef.current : [];
+    const boundaryIndex = rows.findIndex(row => {
+      try {
+        return getChartTime(row) === normalizedBoundaryTime;
+      } catch {
+        return false;
+      }
+    });
+    if (boundaryIndex < 0) return;
+
+    replaySelectionRevealKeyRef.current = revealKey;
+    const timeScale = priceChartRef.current.timeScale();
+    const currentRange = timeScale.getVisibleLogicalRange();
+    const nextRange = getLogicalRangeKeepingIndexVisible({
+      range: currentRange,
+      index: boundaryIndex,
+      length: rows.length,
+      padding: 24
+    });
+
+    if (
+      nextRange &&
+      (!currentRange || nextRange.from !== currentRange.from || nextRange.to !== currentRange.to)
+    ) {
+      applyVisibleLogicalRangeToAllCharts(nextRange);
+      rememberVisibleLogicalRange(nextRange);
+    }
+  }, [currentSymbol, period, replayBoundaryTime, replaySelecting]);
 
   const moveCrosshairToIndex = (index) => {
     const bar = data?.[index];
@@ -1015,7 +1531,7 @@ const KlineChart = ({
       );
 
       if (nextRange) {
-        const clampedRange = clampLogicalRange(nextRange, data.length);
+        const clampedRange = getClampedLogicalRange(nextRange, timelineLengthRef.current || data.length);
         timeScale.setVisibleLogicalRange(clampedRange);
         volumeChartRef.current?.timeScale().setVisibleLogicalRange(clampedRange);
         Object.values(lowerChartRefs.current).forEach(lowerChart => {
@@ -1030,6 +1546,7 @@ const KlineChart = ({
     if (!priceChartRef.current) return;
 
     priceChartRef.current.priceScale('right').applyOptions({
+      autoScale: false,
       mode: scaleMode === 'log' ? 1 : 0,
     });
   }, [scaleMode]);
@@ -1088,7 +1605,8 @@ const KlineChart = ({
         priceLineVisible: false,
         lastValueVisible: false,
       });
-      priceSeriesRef.current.setData(toLineData(data));
+      const replayParts = getReplaySeriesParts();
+      priceSeriesRef.current.setData(appendReplayWhitespace(toLineData(replayParts.rows)));
     } else if (chartStyle === 'area') {
       priceSeriesRef.current = priceChartRef.current.addAreaSeries({
         lineColor: '#4ee093',
@@ -1098,7 +1616,19 @@ const KlineChart = ({
         priceLineVisible: false,
         lastValueVisible: false,
       });
-      priceSeriesRef.current.setData(toLineData(data));
+      const replayParts = getReplaySeriesParts();
+      priceSeriesRef.current.setData(appendReplayWhitespace(toLineData(replayParts.rows)));
+    } else if (chartStyle === 'bars') {
+      priceSeriesRef.current = priceChartRef.current.addBarSeries({
+        upColor: '#ef5350',
+        downColor: '#26a69a',
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      const replayParts = getReplaySeriesParts();
+      const barData = toCandleData(replayParts.rows);
+      const visibleBarData = goNoGoActive ? applyGoNoGoColors(barData, false) : barData;
+      priceSeriesRef.current.setData(appendReplayWhitespace(visibleBarData));
     } else {
       priceSeriesRef.current = priceChartRef.current.addCandlestickSeries({
         upColor: '#ef5350',
@@ -1109,7 +1639,10 @@ const KlineChart = ({
         priceLineVisible: false,
         lastValueVisible: false,
       });
-      priceSeriesRef.current.setData(toCandleData(data));
+      const replayParts = getReplaySeriesParts();
+      const candleData = chartStyle === 'heikinAshi' ? toHeikinAshiData(replayParts.rows) : toCandleData(replayParts.rows);
+      const visibleCandleData = goNoGoActive ? applyGoNoGoColors(candleData) : candleData;
+      priceSeriesRef.current.setData(appendReplayWhitespace(visibleCandleData));
     }
 
     previousDataMetaRef.current = { length: data.length, firstTime, lastTime };
@@ -1127,17 +1660,20 @@ const KlineChart = ({
       Object.values(lowerChartRefs.current).forEach(lowerChart => {
         lowerChart?.timeScale().setVisibleLogicalRange(shiftedRange);
       });
+      rememberVisibleLogicalRange(shiftedRange);
+      notifyVisibleRightTime(shiftedRange);
+      lockPriceScaleForManualScroll();
     } else {
       applyDefaultVisibleRange();
     }
-  }, [chartStyle, data, lowerIndicatorKeySignature, bottomTimeScalePane]);
+  }, [chartStyle, data, goNoGoActive, replayBoundaryTime, replaySelecting, replayTimelineData, lowerIndicatorKeySignature, bottomTimeScalePane]);
 
   useEffect(() => {
     if (!priceSeriesRef.current) return;
-    const patternMarkers = patterns?.showPatterns === false ? [] : getPatternMarkers(patterns);
+    const patternMarkers = patterns?.showPatterns === false ? [] : getPatternMarkers(patterns, replayMaxPatternTime);
     const markers = [...patternMarkers, ...strategyMarkers];
     priceSeriesRef.current.setMarkers(markers);
-  }, [chartStyle, data, patterns, strategyMarkers, lowerIndicatorKeySignature, bottomTimeScalePane]);
+  }, [chartStyle, data, patterns, replayMaxPatternTime, strategyMarkers, lowerIndicatorKeySignature, bottomTimeScalePane]);
 
   useEffect(() => {
     if (!volumeChartRef.current || !data || data.length === 0) return;
@@ -1158,12 +1694,15 @@ const KlineChart = ({
       priceLineVisible: false,
       lastValueVisible: false,
     });
-    volumeSeriesRef.current.setData(toVolumeData(data));
+    const replayParts = getReplaySeriesParts();
+    volumeSeriesRef.current.setData(appendReplayWhitespace(toVolumeData(replayParts.rows)));
     applyDefaultVisibleRange();
-  }, [data, showVolume, lowerIndicatorKeySignature, bottomTimeScalePane]);
+  }, [data, showVolume, replayBoundaryTime, replaySelecting, replayTimelineData, lowerIndicatorKeySignature, bottomTimeScalePane]);
 
   useEffect(() => {
     if (!priceChartRef.current || !data || data.length === 0) return;
+    const replayParts = getReplaySeriesParts();
+    const indicatorData = replayParts.rows;
 
     Object.values(indicatorSeriesRef.current).forEach(series => {
       if (series && priceChartRef.current) {
@@ -1189,7 +1728,7 @@ const KlineChart = ({
           title: '',
         });
 
-        maSeries.setData(calculateMA(data, period));
+        maSeries.setData(appendReplayWhitespace(calculateMA(indicatorData, period)));
         indicatorSeriesRef.current[`${item.key}-ma-${period}`] = maSeries;
       });
         return;
@@ -1207,7 +1746,7 @@ const KlineChart = ({
           title: '',
         });
 
-        emaSeries.setData(calculateEMA(data, period));
+        emaSeries.setData(appendReplayWhitespace(calculateEMA(indicatorData, period)));
         indicatorSeriesRef.current[`${item.key}-ema-${period}`] = emaSeries;
       });
         return;
@@ -1215,7 +1754,7 @@ const KlineChart = ({
 
       if (baseKey === 'boll' && state.params) {
       const colors = item.colors || getOverlayIndicatorSeriesColors('boll', 3);
-      const bollData = calculateBOLL(data, state.params);
+      const bollData = calculateBOLL(indicatorData, state.params);
       const bollSeries = [
         ['bollUpper', bollData.upper, colors[0]],
         ['bollMiddle', bollData.middle, colors[1]],
@@ -1231,7 +1770,7 @@ const KlineChart = ({
           priceLineVisible: false,
           title: '',
         });
-        lineSeries.setData(seriesData);
+        lineSeries.setData(appendReplayWhitespace(seriesData));
         indicatorSeriesRef.current[`${item.key}-${key}`] = lineSeries;
       });
         return;
@@ -1247,14 +1786,16 @@ const KlineChart = ({
         priceLineVisible: false,
         title: '',
       });
-      vwapSeries.setData(calculateVWAP(data));
+      vwapSeries.setData(appendReplayWhitespace(calculateVWAP(indicatorData)));
       indicatorSeriesRef.current[`${item.key}-vwap`] = vwapSeries;
       }
     });
-  }, [data, indicators, overlayLegendItems, lowerIndicatorKeySignature, bottomTimeScalePane]);
+  }, [data, indicators, overlayLegendItems, replayBoundaryTime, replaySelecting, replayTimelineData, lowerIndicatorKeySignature, bottomTimeScalePane]);
 
   useEffect(() => {
     if (!data || data.length === 0) return;
+    const replayParts = getReplaySeriesParts();
+    const indicatorData = replayParts.rows;
 
     Object.entries(lowerSeriesRef.current).forEach(([key, seriesList]) => {
       const lowerChart = lowerChartRefs.current[key];
@@ -1276,7 +1817,7 @@ const KlineChart = ({
 
       if (baseKey === 'macd') {
         const colors = item.state.colors || getLowerIndicatorColors('macd', 3);
-        const macdData = calculateMACD(data, item.state.params);
+        const macdData = calculateMACD(indicatorData, item.state.params);
         const histogram = lowerChart.addHistogramSeries({
           color: colors[2],
           priceLineVisible: false,
@@ -1296,16 +1837,16 @@ const KlineChart = ({
           priceLineVisible: false,
           lastValueVisible: false,
         });
-        histogram.setData(macdData.histogram);
-        macdLine.setData(macdData.macd);
-        signalLine.setData(macdData.signal);
+        histogram.setData(appendReplayWhitespace(macdData.histogram));
+        macdLine.setData(appendReplayWhitespace(macdData.macd));
+        signalLine.setData(appendReplayWhitespace(macdData.signal));
         seriesList.push(histogram, macdLine, signalLine);
         lowerSeriesDataRef.current[item.key] = macdData.histogram;
       }
 
       if (baseKey === 'rsi') {
         const colors = item.state.colors || getLowerIndicatorColors('rsi', 1);
-        const rsiData = calculateRSI(data, item.state.period || 14);
+        const rsiData = calculateRSI(indicatorData, item.state.period || 14);
         const rsiLine = lowerChart.addLineSeries({
           color: colors[0],
           lineWidth: 1,
@@ -1313,14 +1854,14 @@ const KlineChart = ({
           priceLineVisible: false,
           lastValueVisible: false,
         });
-        rsiLine.setData(rsiData);
+        rsiLine.setData(appendReplayWhitespace(rsiData));
         lowerSeriesDataRef.current[item.key] = rsiData;
         seriesList.push(rsiLine);
       }
 
       if (baseKey === 'kdj') {
         const colors = item.state.colors || getLowerIndicatorColors('kdj', 3);
-        const kdjData = calculateKDJ(data, item.state.params);
+        const kdjData = calculateKDJ(indicatorData, item.state.params);
         lowerSeriesDataRef.current[item.key] = kdjData.k;
         [
           ['k', kdjData.k, colors[0]],
@@ -1334,14 +1875,14 @@ const KlineChart = ({
             priceLineVisible: false,
             lastValueVisible: false,
           });
-          line.setData(seriesData);
+          line.setData(appendReplayWhitespace(seriesData));
           seriesList.push(line);
         });
       }
 
       if (baseKey === 'obv') {
         const colors = item.state.colors || getLowerIndicatorColors('obv', 1);
-        const obvData = calculateOBV(data);
+        const obvData = calculateOBV(indicatorData);
         const obvLine = lowerChart.addLineSeries({
           color: colors[0],
           lineWidth: 1,
@@ -1349,7 +1890,7 @@ const KlineChart = ({
           priceLineVisible: false,
           lastValueVisible: false,
         });
-        obvLine.setData(obvData);
+        obvLine.setData(appendReplayWhitespace(obvData));
         lowerSeriesDataRef.current[item.key] = obvData;
         seriesList.push(obvLine);
       }
@@ -1357,7 +1898,69 @@ const KlineChart = ({
       lowerSeriesRef.current[item.key] = seriesList;
     });
     applyDefaultVisibleRange();
-  }, [data, lowerIndicatorItems, paneLayout.lowerVisible, bottomTimeScalePane]);
+  }, [data, lowerIndicatorItems, paneLayout.lowerVisible, replayBoundaryTime, replaySelecting, replayTimelineData, bottomTimeScalePane]);
+
+  useEffect(() => {
+    if ((!replayStartAlignKey && !replayResetAlignKey && !replaySeekAlignKey) || !priceChartRef.current) return;
+
+    const previousAlignKeys = replayAlignKeysRef.current;
+    const resetChanged = replayResetAlignKey !== previousAlignKeys.reset;
+    replayAlignKeysRef.current = {
+      reset: replayResetAlignKey,
+      seek: replaySeekAlignKey,
+      start: replayStartAlignKey
+    };
+
+    const rows = replayLegendRows?.length ? replayLegendRows : data;
+    const visibleLength = rows?.length || 0;
+    if (visibleLength <= 0) return;
+
+    let targetIndex = visibleLength - 1;
+    if (resetChanged && replayResetTargetTime !== null && replayResetTargetTime !== undefined) {
+      let normalizedTargetTime = null;
+      try {
+        normalizedTargetTime = getChartTime({ time: replayResetTargetTime });
+      } catch {
+        normalizedTargetTime = null;
+      }
+
+      const matchedIndex = normalizedTargetTime === null ? -1 : rows.findIndex(row => {
+        try {
+          return getChartTime(row) === normalizedTargetTime;
+        } catch {
+          return false;
+        }
+      });
+
+      if (matchedIndex >= 0) targetIndex = matchedIndex;
+    }
+
+    const currentRange = priceChartRef.current.timeScale().getVisibleLogicalRange();
+    const currentSpan = currentRange?.to - currentRange?.from;
+    const rememberedSpan = replayVisibleSpanRef.current;
+    const span = Number.isFinite(rememberedSpan) && rememberedSpan > 2
+      ? rememberedSpan
+      : (Number.isFinite(currentSpan) && currentSpan > 2
+        ? currentSpan
+        : DEFAULT_VISIBLE_BARS - 1);
+    const nextRange = {
+      from: targetIndex - span,
+      to: targetIndex
+    };
+
+    const alignReplayRange = () => {
+      applyVisibleLogicalRangeToAllCharts(nextRange);
+      rememberVisibleLogicalRange(nextRange);
+      notifyVisibleRightTime(nextRange);
+      requestOlderDataIfNeeded(nextRange);
+    };
+
+    alignReplayRange();
+    window.requestAnimationFrame(() => {
+      alignReplayRange();
+      lockPriceScaleForManualScroll();
+    });
+  }, [replayLegendRows, replayResetAlignKey, replayResetTargetTime, replaySeekAlignKey, replayStartAlignKey, data]);
 
   return (
     <div
@@ -1372,9 +1975,31 @@ const KlineChart = ({
       onKeyDown={handleKeyDown}
       onMouseEnter={() => containerRef.current?.focus()}
     >
-      <div ref={pricePaneRef} className="kline-price-pane">
-        {Number.isFinite(sharedCrosshairX) && (
-          <>
+      {replaySelecting && Number.isFinite(replaySelectionPreview?.x) && (
+        <>
+          <div
+            className="kline-replay-muted-region"
+            style={{ left: `${replaySelectionPreview.x}px` }}
+          />
+          <div
+            className="kline-replay-boundary selecting"
+            style={{ transform: `translateX(${replaySelectionPreview.x}px)` }}
+          >
+            <div className="kline-replay-boundary-line" />
+            <div className="kline-replay-boundary-handle" />
+            <div className="kline-replay-boundary-label">
+              选择回放起点
+              {replaySelectionPreview.label && <span>{replaySelectionPreview.label}</span>}
+            </div>
+          </div>
+        </>
+      )}
+      <div
+        ref={pricePaneRef}
+        className="kline-price-pane"
+      >
+	        {Number.isFinite(sharedCrosshairX) && (
+	          <>
             <div
               className="kline-pane-crosshair-line"
               style={{ transform: `translateX(${sharedCrosshairX}px)` }}
@@ -1395,16 +2020,21 @@ const KlineChart = ({
                 {sharedCrosshairTimeLabel}
               </div>
             )}
-          </>
-        )}
-        <DrawingOverlay
+	          </>
+	        )}
+	        <DrawingOverlay
           activeDrawingTool={activeDrawingTool}
           addDrawing={addDrawing}
+          autoFibonacciEnabled={autoFibonacciEnabled}
+          autoTrendSettings={autoTrendSettings}
           chartRef={priceChartRef}
           data={data}
           deleteDrawing={deleteDrawing}
           drawingsBySymbol={drawingsBySymbol}
+          heatmapEnabled={heatmapEnabled}
+          heatmapType={heatmapType}
           paneRef={pricePaneRef}
+          patterns={patterns}
           selectedDrawingId={selectedDrawingId}
           selectDrawing={selectDrawing}
           seriesRef={priceSeriesRef}

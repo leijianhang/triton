@@ -48,13 +48,13 @@ const colorOptions = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'];
 
 const widgets = [
   { icon: <ThunderboltOutlined />, title: '市场脉搏', value: '6 个标的触发扫描条件', meta: '15分钟趋势 + 成交量，2 个新形态', tone: 'up' },
-  { icon: <BellOutlined />, title: '提醒', value: '3 个活跃提醒接近触发', meta: '600519, 000858, CU2406', tone: 'neutral' },
+  { icon: <BellOutlined />, title: '提醒', value: '3 个活跃提醒接近触发', meta: '600519, AAPL, 0700.HK', tone: 'neutral' },
   { icon: <LineChartOutlined />, title: '择时', value: '自选列表 62% 位于 MA20 上方', meta: '市场宽度偏建设性', tone: 'up' }
 ];
 
 const news = [
   { time: '10:21', text: '扫描器发现新的趋势延续形态。' },
-  { time: '10:09', text: '早盘区间突破后，期货动能改善。' },
+  { time: '10:09', text: '美股与港股核心标的动能改善。' },
   { time: '09:58', text: '大盘股自选列表仍位于短期支撑上方。' }
 ];
 
@@ -82,7 +82,7 @@ const formatCellValue = (row, key) => {
   if (key === 'changeAbs') {
     const value = getChangeAbs(row);
     const prefix = value > 0 ? '+' : '';
-    return `${prefix}${value.toFixed(row.type === 'futures' ? 0 : 2)}`;
+    return `${prefix}${value.toFixed(2)}`;
   }
   if (key === 'vs52High') return `${getWeek52Range(row).vsHigh.toFixed(1)}%`;
   if (key === 'vs52Low') return `+${getWeek52Range(row).vsLow.toFixed(1)}%`;
@@ -92,8 +92,8 @@ const formatCellValue = (row, key) => {
 const getWeek52Range = row => {
   const last = Number(row.last);
   const score = Number(row.score) || 70;
-  const highSpread = row.type === 'futures' ? 0.04 : 0.06;
-  const lowSpread = row.type === 'futures' ? 0.10 : 0.16;
+  const highSpread = row.type === 'us' || row.type === 'hk' ? 0.08 : 0.06;
+  const lowSpread = row.type === 'us' || row.type === 'hk' ? 0.18 : 0.16;
   const high = last * (1 + highSpread + (100 - score) / 1200);
   const low = last * (1 - lowSpread - (100 - score) / 1500);
   const position = Math.max(0, Math.min(1, (last - low) / (high - low)));

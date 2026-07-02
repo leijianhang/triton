@@ -12,9 +12,6 @@ export const getStoredPatternSelections = (patterns, category = 'all') => {
   if (category === 'all' || category === 'chart') {
     selections.push(...collectSelected(patterns, 'chartPatterns'));
   }
-  if (category === 'all' || category === 'thestrat') {
-    selections.push(...collectSelected(patterns, 'theStratPatterns'));
-  }
 
   return [...new Set(selections)];
 };
@@ -30,6 +27,5 @@ export const clearStoredPatternSelections = (patterns = {}) => ({
   ...patterns,
   candlePatterns: clearedPatternGroup(),
   chartPatterns: clearedPatternGroup(),
-  theStratPatterns: clearedPatternGroup(),
   showPatterns: true
 });

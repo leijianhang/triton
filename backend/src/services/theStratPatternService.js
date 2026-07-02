@@ -99,12 +99,3 @@ export const scanTheStratPatterns = (data = []) => {
 
   return results;
 };
-
-export const getTheStratPatternCatalog = () => THE_STRAT_PATTERNS.map(pattern => ({
-  type: pattern.type,
-  name: pattern.name,
-  signal: pattern.signal,
-  family: pattern.family,
-  sequence: pattern.sequence,
-  group: 'TheStrat'
-}));
