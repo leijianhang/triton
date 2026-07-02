@@ -1,4 +1,4 @@
-# TrendSpider-Style Market Analysis Platform
+# Market Analysis Platform
 
 A chart-first technical analysis app for A-shares, US stocks, and Hong Kong stocks.
 
