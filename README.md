@@ -30,18 +30,3 @@ npm run dev
 
 Backend defaults to `http://localhost:3001`. Frontend is served by Vite.
 
-## API
-
-```http
-GET /api/market/:type/list?limit=10
-GET /api/market/:type/search?keyword=AAPL&limit=12
-GET /api/market/:type/kline/:symbol?period=daily&limit=200&before=2025-01-01
-```
-
-Supported `type` values:
-
-- `stock`
-- `us`
-- `hk`
-
-`/api/stock/*` remains as an A-share alias and uses the same external market service.
